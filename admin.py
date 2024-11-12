@@ -256,6 +256,8 @@ def scan_file(file_path):
 # ! ONLY SPECIFIC ADMIN CAN ADD, FIX SCAN FILE
 @app.route('/admin/product-management/add', methods=['POST'])
 def add_product():
+    #verify that the admin position is allowed to do this method
+
     try:
         # get input from admin
         data = request.form
@@ -267,9 +269,11 @@ def add_product():
         warehouse_location = data.get('warehouse_location')
         category_id = data.get('category_id')
         subcategory_id = data.get('subcategory_id')
+
         # verify all fields are there
         if not all([name, description, price, stock_level, warehouse_location, specifications, category_id, subcategory_id]):
             return jsonify({"error": "All fields are required."}), 400
+        
         # verify that the image is not a malicious injection
         if 'image_data' not in request.files:
             return jsonify({'error': 'No image provided'}), 400
@@ -282,8 +286,10 @@ def add_product():
         image_data.save(file_path)
         if not allowed_file_type(file_path):
             return jsonify({'error': 'Invalid file type'}), 400
+        
         #if scan_file(file_path):
         #    return jsonify({'error': 'Malware detected'}), 400
+
         # add product to the database
         raw_query = """INSERT INTO Products (name, description, price, image_data, specifications, category_id, subcategory_id, stock_level, warehouse_location, created_at
         ) VALUES (:name, :description, :price, :image_data, :specifications, :category_id, :subcategory_id, :stock_level, :warehouse_location, :created_at)"""
@@ -299,12 +305,47 @@ def add_product():
             warehouse_location=warehouse_location,
             created_at=datetime.utcnow() 
         )
+
         db.session.execute(query)
         db.session.commit()
         return jsonify({"message": "Product added successfully!"}), 201
+    
+    except Exception as e:
+
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+# THIS FUNCTION DELETES A PRODUCT FROM DATABASE
+@app.route('/admin/product-management/delete', methods=['POST'])
+def delete_product():
+    #verify that the admin position is allowed to do this method
+
+    try:
+        data = request.get_json()
+        product_id = data.get('product_id')
+
+        if not product_id:
+            return jsonify({"error": "Product ID is required"}), 400
+        
+        product = Product.query.filter_by(product_id=product_id).first()
+        if product is None:
+            return jsonify({"error": f"No product found with ID {product_id}"}), 404
+        
+        db.session.delete(product)
+        db.session.commit()
+
+        return jsonify({"message": f"Product with ID {product_id} deleted successfully"}), 200
+
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
+
+
+@app.route('/admin/product-management/update', methods=['POST'])
+def update_product():
+    # TO DO
+    return None
+
 
 if __name__ == '__main__':
     with app.app_context():
