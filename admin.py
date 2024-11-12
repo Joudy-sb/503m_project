@@ -15,6 +15,8 @@ class Product(db.Model):
     name = db.Column(db.String(100), nullable=False)
     description = db.Column(db.Text)
     price = db.Column(db.Float, nullable=False)
+    image_data = db.Column(db.LargeBinary)
+    specifications = db.Column(db.JSON)
     category_id = db.Column(db.Integer, db.ForeignKey('Categories.category_id'))
     subcategory_id = db.Column(db.Integer, db.ForeignKey('Subcategories.subcategory_id'))
     stock_level = db.Column(db.Integer, nullable=False)
@@ -128,4 +130,3 @@ if __name__ == '__main__':
 
 
 # Product Management
-
