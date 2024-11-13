@@ -1,3 +1,4 @@
+import json
 import os
 from sqlalchemy.sql import text
 from flask import Flask, jsonify, request
@@ -287,18 +288,58 @@ def add_product():
     try:
         # get input from admin
         data = request.form
-        name = data.get('name')
-        description = data.get('description')
-        price = data.get('price')
-        specifications = data.get('specifications')
-        stock_level = data.get('stock_level')
-        warehouse_location = data.get('warehouse_location')
-        category_id = data.get('category_id')
-        subcategory_id = data.get('subcategory_id')
 
-        # verify all fields are there
-        if not all([name, description, price, stock_level, warehouse_location, specifications, category_id, subcategory_id]):
-            return jsonify({"error": "All fields are required."}), 400
+        # verify name is a string
+        name = data.get('name')
+        if not isinstance(name, str):
+            return jsonify({"error": "Invalid input for name, must be a string"}), 400
+        # verify description is a string
+        description = data.get('description')
+        if not isinstance(description, str):
+            return jsonify({"error": "Invalid input for description, must be a string"}), 400
+        # verify price is a float
+        price = data.get('price')
+        try:
+            price = float(data['price'])
+        except (ValueError, TypeError):
+            return jsonify({"error": "Invalid input for price, must be a float"}), 400
+        # verify specification is json dictionary
+        specifications = data.get('specifications')
+        try:
+            specifications = json.loads(data['specifications']) 
+            specifications_json = json.dumps(specifications)
+        except (ValueError, TypeError):
+            return jsonify({"error": "Invalid input for specifications, must be valid JSON"}), 400
+        # verify stock level is int
+        stock_level = data.get('stock_level')
+        try:
+            stock_level = int(data['stock_level'])
+        except (ValueError, TypeError):
+            return jsonify({"error": "Invalid input for stock_level, must be an integer"}), 400
+        # verify warehouse is a string
+        warehouse_location = data.get('warehouse_location')
+        if not isinstance(warehouse_location, str):
+            return jsonify({"error": "Invalid input for warehouse_location, must be a string"}), 400
+        # verify category is an int
+        category_id = data.get('category_id')
+        try:
+            category_id = int(data['category_id'])
+            # verify that the category exist
+            category = Category.query.filter_by(category_id=category_id).first()
+            if category is None:
+                return jsonify({"error": f"Category does not exist"}), 404
+        except (ValueError, TypeError):
+            return jsonify({"error": "Invalid input for category_id, must be an integer"}), 400
+        # verify subcategory is an int
+        subcategory_id = data.get('subcategory_id')
+        try:
+            subcategory_id = int(data['subcategory_id'])
+            # verify that the subcategory exist
+            subcategory = Subcategory.query.filter_by(subcategory_id=subcategory_id).first()
+            if subcategory is None:
+                return jsonify({"error": f"Subcategory does not exist"}), 404
+        except (ValueError, TypeError):
+            return jsonify({"error": "Invalid input for subcategory_id, must be an integer"}), 400
         
         # verify that the image is not a malicious injection
         if 'image_data' not in request.files:
@@ -312,11 +353,10 @@ def add_product():
         image_data.save(file_path)
         if not allowed_file_type(file_path):
             return jsonify({'error': 'Invalid file type'}), 400
-        
         #if scan_file(file_path):
         #    return jsonify({'error': 'Malware detected'}), 400
 
-        # add product to the database
+        # after verification, add product to the database
         raw_query = """INSERT INTO Products (name, description, price, image_data, specifications, category_id, subcategory_id, stock_level, warehouse_location, created_at
         ) VALUES (:name, :description, :price, :image_data, :specifications, :category_id, :subcategory_id, :stock_level, :warehouse_location, :created_at)"""
         query = text(raw_query).bindparams(
@@ -324,20 +364,18 @@ def add_product():
             description=description,
             price=price,
             image_data=file_path,
-            specifications=specifications,
+            specifications=specifications_json,
             category_id=category_id,
             subcategory_id=subcategory_id,
             stock_level=stock_level,
             warehouse_location=warehouse_location,
             created_at=datetime.utcnow() 
         )
-
         db.session.execute(query)
         db.session.commit()
         return jsonify({"message": "Product added successfully!"}), 201
     
     except Exception as e:
-
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
@@ -349,29 +387,148 @@ def delete_product():
     try:
         data = request.get_json()
         product_id = data.get('product_id')
-
         if not product_id:
             return jsonify({"error": "Product ID is required"}), 400
-        
+    
         product = Product.query.filter_by(product_id=product_id).first()
         if product is None:
             return jsonify({"error": f"No product found with ID {product_id}"}), 404
         
         db.session.delete(product)
         db.session.commit()
-
         return jsonify({"message": f"Product with ID {product_id} deleted successfully"}), 200
 
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
-
-@app.route('/admin/product-management/update', methods=['POST'])
+# THIS FUNCTION UPDATES A PRODUCT FROM DATABASE
+@app.route('/admin/product-management/update', methods=['PUT'])
 def update_product():
-    # TO DO
-    return None
+    try: 
+        data = request.form
+        product_id = data.get('product_id')
 
+        if not product_id:
+            return jsonify({"error": "No product ID"}),400
+        
+        product = Product.query.filter_by(product_id=product_id).first()
+
+        if product is None:
+            return jsonify({"error": f"No product found with ID {product_id}"}), 404
+
+        if 'name' in data:
+            name = data.get('name')
+            if not isinstance(name, str):
+                return jsonify({"error": "Invalid input for name, must be a string"}), 400
+        else:
+            name = product.name
+        if 'description' in data:
+            description = data.get('description')
+            if not isinstance(description, str):
+                return jsonify({"error": "Invalid input for description, must be a string"}), 400
+        else:
+            description = product.description
+        if 'price' in data:
+            price = data.get('price')
+            try:
+                price = float(data['price'])
+            except (ValueError, TypeError):
+                return jsonify({"error": "Invalid input for price, must be a float"}), 400
+        else:
+            price = product.price
+        if 'specifications' in data:
+            specifications = data.get('specifications')
+            try:
+                specifications = json.loads(data['specifications'])  
+                specifications_json = json.dumps(specifications)  
+            except (ValueError, TypeError):
+                return jsonify({"error": "Invalid input for specifications, must be valid JSON"}), 400
+        else:
+            specifications_json = json.dumps(product.specifications) 
+        if 'stock_level' in data:
+            stock_level = data.get('stock_level')
+            try:
+                stock_level = int(data['stock_level'])
+            except (ValueError, TypeError):
+                return jsonify({"error": "Invalid input for stock_level, must be an integer"}), 400
+        else:
+            stock_level = product.stock_level
+        if 'warehouse_location' in data:
+            warehouse_location = data.get('warehouse_location')
+            if not isinstance(warehouse_location, str):
+                return jsonify({"error": "Invalid input for warehouse_location, must be a string"}), 400
+        else:
+            warehouse_location = product.warehouse_location
+        if 'category_id' in data:
+            try:
+                category_id = int(data['category_id'])
+                # verify that the category exist
+                category = Product.query.filter_by(category_id=category_id).first()
+                if category is None:
+                    return jsonify({"error": f"Category does not exist"})
+            except (ValueError, TypeError):
+                return jsonify({"error": "Invalid input for category_id, must be an integer"}), 400
+        else:
+            category_id = product.category_id
+        if 'subcategory_id' in data:
+            subcategory_id = data.get('subcategory_id')
+            try:
+                subcategory_id = int(data['subcategory_id'])
+                # verify that the subcategory exist
+                subcategory = Product.query.filter_by(subcategory_id=subcategory_id).first()
+                if subcategory is None:
+                    return jsonify({"error": f"Subcategory does not exist"})
+            except (ValueError, TypeError):
+                return jsonify({"error": "Invalid input for subcategory_id, must be an integer"}), 400
+        else:
+            subcategory_id = product.subcategory_id
+
+        # verify that the image is not a malicious injection
+        if 'image_data' in request.files:
+            image_data = request.files['image_data']
+            if image_data.filename == '':
+                return jsonify({'error': 'No selected image'}), 400
+            if not allowed_file(image_data.filename):
+                return jsonify({'error': 'Invalid file extension'}), 400
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], image_data.filename)
+            image_data.save(file_path)
+            if not allowed_file_type(file_path):
+                return jsonify({'error': 'Invalid file type'}), 400
+            #if scan_file(file_path):
+            #    return jsonify({'error': 'Malware detected'}), 400
+            image_data = file_path
+        else:
+            image_data = product.image_data
+
+        # after verification, update product to the database
+        raw_query = """
+        UPDATE Products
+        SET name = :name,description = :description, price = :price, image_data = :image_data,specifications = :specifications, category_id = :category_id, subcategory_id = :subcategory_id, stock_level = :stock_level, warehouse_location = :warehouse_location, updated_at = :updated_at
+        WHERE 
+            product_id = :product_id
+        """
+        query = text(raw_query).bindparams(
+            name=name,
+            description=description,
+            price=price,
+            image_data=image_data,
+            specifications=specifications_json,
+            category_id=category_id,
+            subcategory_id=subcategory_id,
+            stock_level=stock_level,
+            warehouse_location=warehouse_location,
+            updated_at=datetime.utcnow(), 
+            product_id=product_id        
+        )
+
+        db.session.execute(query)
+        db.session.commit()
+        return jsonify({"message": "Product updated successfully!"}), 200
+    
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     with app.app_context():
@@ -379,6 +536,9 @@ if __name__ == '__main__':
         print("Database and tables created!")
         if not Category.query.first():
             create_categories()
+            print("Categories created!")
         if not Subcategory.query.first():
             create_subcategories()
+            print("Subategories created!")
+
     app.run(debug=True)
