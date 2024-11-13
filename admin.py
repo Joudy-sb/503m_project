@@ -2,10 +2,9 @@ import os
 from sqlalchemy.sql import text
 from flask import Flask, jsonify, request
 from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime
+from datetime import datetime,timedelta, timezone
 import magic 
 import pyclamd
-from datetime import datetime
 
 app = Flask(__name__)
 
@@ -33,8 +32,8 @@ class Product(db.Model):
     subcategory_id = db.Column(db.Integer, db.ForeignKey('Subcategories.subcategory_id'))
     stock_level = db.Column(db.Integer, nullable=False)
     warehouse_location = db.Column(db.String(100))
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc), nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
 
 class Category(db.Model):
     __tablename__ = 'Categories'
@@ -54,8 +53,8 @@ class InventoryLog(db.Model):
     log_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     product_id = db.Column(db.Integer, db.ForeignKey('Products.product_id'))
     change = db.Column(db.Integer, nullable=False)
-    reason = db.Column(db.Text)
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    reason = db.Column(db.Text) # can make it take one of two options : sale or restock
+    timestamp = db.Column(db.DateTime, default=datetime.now(timezone.utc))
 
 class Order(db.Model):
     __tablename__ = 'Orders'
@@ -63,8 +62,8 @@ class Order(db.Model):
     customer_id = db.Column(db.Integer, db.ForeignKey('Customers.customer_id'))
     status = db.Column(db.String(50), nullable=False)
     total_price = db.Column(db.Float, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
 
 class OrderItem(db.Model):
     __tablename__ = 'OrderItems'
@@ -83,8 +82,8 @@ class Customer(db.Model):
     address = db.Column(db.Text)
     phone = db.Column(db.String(15))
     password_hash = db.Column(db.String(100), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
 
 class CustomerProfile(db.Model):
     __tablename__ = 'CustomerProfile'
@@ -100,8 +99,8 @@ class Admin(db.Model):
     email = db.Column(db.String(100), unique=True, nullable=False)
     role = db.Column(db.String(50), nullable=False)
     password_hash = db.Column(db.String(100), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
 
 class Role(db.Model):
     __tablename__ = 'Roles'
@@ -218,9 +217,35 @@ def create_subcategories():
 
 
 # Inventory Management System
+@app.route('/admin/inventory/view_all_warehouses', methods=['GET']) #real time montioring of stock level across warehouses
+def view_all_warehouses_inventory():
+    """
+    View all warehouses with their products and stock levels.
+    """
+    try:
+        # Query all products grouped by warehouse location
+        warehouses_inventory = {}
+
+        # Get all products and organize by warehouse location
+        products = Product.query.all()
+        for product in products:
+            warehouse = product.warehouse_location
+            if warehouse not in warehouses_inventory:
+                warehouses_inventory[warehouse] = {"warehouse": warehouse, "products": {}}
+            
+            warehouses_inventory[warehouse]["products"][product.name] = product.stock_level
+
+        # Convert warehouses_inventory to a list for better JSON structure
+        response_data = list(warehouses_inventory.values())
+
+        return jsonify(response_data), 200
+        # data looks like this: [{"warehouse": "A", "products": {"Product 1": 10, "Product 2": 20}},
+        #                        {"warehouse": "B", "products": {"Product 1": 5, "Product 3": 15}}]
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
-
+## TO DO: AUTOMATIC UPDATE OF AVAILABIILITY OF PRODUCTS, AND LOW STOCK LEVEL ALERTS
 
 
 # Order Management System
