@@ -8,7 +8,7 @@ itsdangerous==2.2.0
 Jinja2==3.1.4
 MarkupSafe==3.0.2
 pyClamd==0.4.0
-python-magic==0.4.27
+python-magic-bin
 SQLAlchemy==2.0.36
 typing_extensions==4.12.2
 Werkzeug==3.1.3

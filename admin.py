@@ -5,6 +5,7 @@ from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime,timedelta, timezone
 import magic 
 import pyclamd
+from sqlalchemy import func
 
 app = Flask(__name__)
 
@@ -32,8 +33,8 @@ class Product(db.Model):
     subcategory_id = db.Column(db.Integer, db.ForeignKey('Subcategories.subcategory_id'))
     stock_level = db.Column(db.Integer, nullable=False)
     warehouse_location = db.Column(db.String(100))
-    created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc), nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
+    created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc),server_default=func.now(), nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.now(timezone.utc),server_default=func.now(), onupdate=datetime.now(timezone.utc))
 
 class Category(db.Model):
     __tablename__ = 'Categories'
