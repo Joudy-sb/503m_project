@@ -1,0 +1,3 @@
+name,description,price,specifications,stock_level,warehouse_location,category_id,subcategory_id
+Product A,Description A,25.99,"""{\""color\"": \""red\"", \""size\"": \""M\""}""",50,Shelf A1,1,2
+Product B,Description B,19.99,"""{\""color\"": \""red\"", \""size\"": \""M\""}""",20,Shelf B2,2,3

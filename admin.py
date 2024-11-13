@@ -15,6 +15,7 @@ ALLOWED_EXTENSIONS = [
     'png',
     'jpg',
     'jpeg',
+    'csv',
 ]
 
 app.config['UPLOAD_FOLDER'] = 'C:/Users/joudy/Desktop/FALL_2024/EECE503M/Project/503m_project/Uploads'
@@ -290,6 +291,7 @@ def validate_information(product):
         # Validate 'specifications'
         specifications = product.get('specifications', '{}')  # Default to empty JSON object if missing
         try:
+            print(f"Specifications received: {specifications}")  # Debugging line
             if isinstance(specifications, str):
                 specifications = json.loads(specifications)  # Parse JSON string
             elif not isinstance(specifications, dict):
@@ -353,7 +355,7 @@ def allowed_file_type(file_path):
     mime = magic.Magic(mime=True) 
     file_mime_type = mime.from_file(file_path)  
     print(f"Detected MIME type: {file_mime_type}")
-    return file_mime_type in ['image/png', 'image/jpeg', 'image/jpg']
+    return file_mime_type in ['image/png', 'image/jpeg', 'image/jpg', 'file/csv', 'text/plain']
 
 # THIS FUNCTION VALIDATES FILE EXTENSION
 def allowed_file(filename):
@@ -466,6 +468,76 @@ def update_product(product_id):
         db.session.commit()
         return jsonify({"message": "Product updated successfully!"}), 200
     
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+    
+import csv
+
+@app.route('/admin/product-management/add-csv', methods=['POST'])
+def bulk_add():
+    try:
+        csv_file = request.files.get('csv_file')
+        
+        if not csv_file:
+            return jsonify({"error": "No file provided"}), 400
+
+        if not allowed_file(csv_file.filename):
+            raise ValueError("Invalid file extension for CSV")
+
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], csv_file.filename)
+        csv_file.save(file_path)
+
+        if not allowed_file_type(file_path):
+            raise ValueError("Invalid file type for CSV")
+
+        with open(file_path, mode='r', encoding='utf-8') as file:
+            csv_reader = csv.DictReader(file)
+            
+            errors = []
+            successful_entries = []
+            
+            for row_index, row in enumerate(csv_reader, start=1):
+                try:
+                    # Validate and process each product row
+                    validated_product = validate_information({
+                        "name": row['name'],
+                        "description": row['description'],
+                        "price": row['price'],
+                        "specifications": row['specifications'],
+                        "stock_level": row['stock_level'],
+                        "warehouse_location": row['warehouse_location'],
+                        "category_id": row['category_id'],
+                        "subcategory_id": row['subcategory_id'],
+                        "image_data": None  # No image data from CSV
+                    })                    
+                    successful_entries.append(validated_product)
+
+                except ValueError as e:
+                    errors.append({"row": row_index, "error": str(e)})
+
+            if successful_entries:
+                insert_query = """
+                INSERT INTO Products (name, description, price, image_data, specifications, 
+                                      category_id, subcategory_id, stock_level, warehouse_location, created_at)
+                VALUES (:name, :description, :price, :image_data, :specifications, 
+                        :category_id, :subcategory_id, :stock_level, :warehouse_location, :created_at)
+                """
+                for product in successful_entries:
+                    product['created_at'] = datetime.utcnow()  
+                    db.session.execute(text(insert_query), product)
+                
+                db.session.commit()
+
+        response = {
+            "message": f"Successfully added {len(successful_entries)} products.",
+            "errors": errors  
+        }
+        return jsonify(response), 201
+
+    except ValueError as ve:
+        return jsonify({"error": str(ve)}), 400
+
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
