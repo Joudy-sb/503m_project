@@ -857,7 +857,7 @@ def add_product():
         return jsonify({"message": "Product added successfully!"}), 201
     except Exception as e:
         db.session.rollback()
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Pleace check input and try again"}), 500
 
 # THIS FUNCTION DELETES A PRODUCT FROM DATABASE
 @app.route('/admin/product-management/delete', methods=['POST'])
