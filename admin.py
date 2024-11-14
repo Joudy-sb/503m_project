@@ -391,6 +391,34 @@ def generate_invoice(order_id):
     # Send the PDF as a file to download
     return send_file(pdf_buffer, as_attachment=True, download_name=f"Invoice_Order_{order_id}.pdf", mimetype='application/pdf')
 
+ALLOWED_ORDER_STATUSES = {"pending", "processing", "shipped", "delivered"}
+
+
+@app.route('/admin/update-order-status/<int:order_id>', methods=['PUT'])    # admin can update the status of the order 
+                                                                            # validated admin input
+#AUTHENTICATION!!
+def update_order_status(order_id):
+    data = request.get_json()
+    new_status = data.get("status")
+
+    # Check if the status provided is valid
+    if new_status not in ALLOWED_ORDER_STATUSES:
+        return jsonify({"error": "Invalid status. Allowed values are 'pending', 'processing', 'shipped', 'delivered'"}), 400
+
+    # Fetch the order from the database
+    order = Order.query.get(order_id)
+    if not order:
+        return jsonify({"error": "Order not found"}), 404
+
+    # Update the order status
+    order.status = new_status
+    db.session.commit()
+
+    return jsonify({
+        "message": "Order status updated successfully",
+        "order_id": order.order_id,
+        "new_status": order.status
+    }), 200
 
 # --------------------------------Product Management System ----------------------------
 
