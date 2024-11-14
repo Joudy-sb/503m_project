@@ -8,8 +8,13 @@ from datetime import datetime,timedelta, timezone
 import magic 
 import pyclamd
 from sqlalchemy import func
-from jsonschema import validate, ValidationError
-import csv
+
+from flask import send_file
+from reportlab.lib.pagesizes import A4
+from reportlab.lib import colors
+from reportlab.pdfgen import canvas
+from reportlab.platypus import Table, TableStyle
+from io import BytesIO
 
 app = Flask(__name__)
 
@@ -22,10 +27,8 @@ ALLOWED_EXTENSIONS = [
 
 # File upload configuration
 app.config['UPLOAD_FOLDER'] = 'C:/Users/joudy/Desktop/FALL_2024/EECE503M/Project/503m_project/Uploads'
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # Limit to 16 MB
-
-# Database configuration
-app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:987654321@localhost:3306/ecommerce_platform'
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
+app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:12345678910lc@localhost:3306/ecommerce_platform'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Initialize SQLAlchemy
@@ -134,6 +137,17 @@ class ActivityLog(db.Model):
     admin_id = db.Column(db.Integer, db.ForeignKey('Admins.admin_id'))
     action = db.Column(db.Text, nullable=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+
+class Return(db.Model):
+    __tablename__ = 'Returns'
+    return_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    order_id = db.Column(db.Integer, db.ForeignKey('Orders.order_id'), nullable=False)
+    product_id = db.Column(db.Integer, db.ForeignKey('Products.product_id'), nullable=False)
+    status = db.Column(db.String(50), nullable=False, default="Pending")  # Pending, Approved, Rejected, Processed
+    reason = db.Column(db.Text, nullable=False)
+    action = db.Column(db.String(50), nullable=False)  # Refund, Replacement
+    requested_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
+    processed_at = db.Column(db.DateTime)
 
 # THIS FUNCTION CREATES PRE-SET CATEGORIES
 def create_categories():
@@ -258,220 +272,219 @@ def view_all_warehouses_inventory():
 ## TO DO: AUTOMATIC UPDATE OF AVAILABIILITY OF PRODUCTS, AND LOW STOCK LEVEL ALERTS
 
 
-# Order Management System
+# --------------------------------Order Management System ----------------------------
 
-
-
-
-
-# Product Management
-# JSON SPECIFICATIONS 
-skincare_specifications_schema = {
-    "type": "object",
-    "properties": {
-        "skinType": {
-            "type": "array",
-            "items": {
-                "type": "string",
-                "enum": ["Normal", "Dry", "Oily", "Combination", "Sensitive"]
-            },
-            "minItems": 1
-        },
-        "ingredients": {
-            "type": "array",
-            "items": {
-                "type": "string"
-            },
-            "minItems": 1
-        },
-        "purpose": {
-            "type": "array",
-            "items": {
-                "type": "string",
-                "enum": ["Hydration", "Anti-aging", "Brightening", "Sun protection", "Deep cleansing"]
-            },
-            "minItems": 1
-        },
-        "texture": {
-            "type": "string",
-            "enum": ["Gel", "Cream", "Foam", "Oil"]
-        },
-        "volume": {
-            "type": "string",
-            "pattern": "^[0-9]+(ml|ML|oz|OZ)$" 
+@app.route('/admin/orders', methods=['GET']) #manage orders -> gets all orders from the db 
+# MUST AUTHENTICATE ADMIN FIRST
+def manage_orders():
+    status = request.args.get('status')  # Get the status filter from the query params
+    
+    # Query orders based on the status filter, if provided
+    if status:
+        orders = Order.query.filter_by(status=status).all()  # Filter orders by status
+    else:
+        orders = Order.query.all()  # Get all orders if no filter is applied
+    
+    # Prepare the orders data for JSON response
+    orders_data = []
+    for order in orders:
+        order_data = {
+            'order_id': order.order_id,
+            'customer_id': order.customer_id,
+            'status': order.status,
+            'total_price': order.total_price,
+            'created_at': order.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+            'updated_at': order.updated_at.strftime('%Y-%m-%d %H:%M:%S') if order.updated_at else None,
         }
-    },
-    "required": ["skinType", "ingredients", "purpose", "texture", "volume"]
-}
+        
+        orders_data.append(order_data)
 
-makeup_schema = {
-    "type": "object",
-    "properties": {
-        "shade": {"type": "string", "minLength": 1},
-        "finish": {"type": "string", "enum": ["Matte", "Satin", "Glossy", "Dewy"]},
-        "coverage": {"type": "string", "enum": ["Light", "Medium", "Full"]},
-        "waterproof": {"type": "boolean"},
-        "ingredients": {
-            "type": "array",
-            "items": {"type": "string", "enum": ["Paraben-free", "Cruelty-free", "Vegan"]},
-            "minItems": 1
-        },
-        "volumeWeight": {"type": "string", "pattern": "^[0-9]+(ml|g|oz)$"}
-    },
-    "required": ["shade", "finish", "coverage", "waterproof", "ingredients", "volumeWeight"]
-}
+    # Return the orders data as a JSON response
+    return jsonify(orders_data)
 
-haircare_schema = {
-    "type": "object",
-    "properties": {
-        "hairType": {
-            "type": "array",
-            "items": {"type": "string", "enum": ["Straight", "Wavy", "Curly", "Coily", "Colored"]},
-            "minItems": 1
-        },
-        "purpose": {
-            "type": "array",
-            "items": {"type": "string", "enum": ["Repair", "Hydration", "Volume", "Anti-dandruff", "Color protection"]},
-            "minItems": 1
-        },
-        "ingredients": {
-            "type": "array",
-            "items": {"type": "string"},
-            "minItems": 1
-        },
-        "volume": {"type": "string", "pattern": "^[0-9]+(ml|L|oz)$"},
-        "tools": {"type": "string"}
-    },
-    "required": ["hairType", "purpose", "ingredients", "volume"]
-}
+@app.route('/admin/orderitems', methods=['GET']) #manage orders -> gets all order items from the db 
+# MUST AUTHENTICATE ADMIN FIRST
+def get_order_items():
+    # Query all OrderItems from the database
+    order_items = OrderItem.query.all()
+    
+    # Format each OrderItem as a dictionary
+    order_items_list = [
+        {
+            "order_item_id": item.order_item_id,
+            "order_id": item.order_id,
+            "product_id": item.product_id,
+            "quantity": item.quantity,
+            "price_at_purchase": item.price_at_purchase
+        }
+        for item in order_items
+    ]
+    
+    # Return the list of order items as JSON
+    return jsonify(order_items_list)
 
-fragrances_schema = {
-    "type": "object",
-    "properties": {
-        "fragranceFamily": {"type": "string", "enum": ["Floral", "Woody", "Citrus", "Fresh", "Oriental"]},
-        "concentration": {"type": "string", "enum": ["Eau de Parfum (EDP)", "Eau de Toilette (EDT)", "Eau de Cologne (EDC)"]},
-        "notes": {
-            "type": "object",
-            "properties": {
-                "top": {"type": "string"},
-                "middle": {"type": "string"},
-                "base": {"type": "string"}
-            },
-            "required": ["top", "middle", "base"]
-        },
-        "volume": {"type": "string", "pattern": "^[0-9]+(ml|oz)$"}
-    },
-    "required": ["fragranceFamily", "concentration", "notes", "volume"]
-}
+@app.route('/admin/order/status/<int:order_id>', methods=['GET']) # Track order status
+# MUST AUTHENTICATE ADMIN FIRST
+def get_order_status(order_id):
+    # Query the Order by the given order_id
+    order = Order.query.get(order_id)
+    
+    # Check if the order exists
+    if order is None:
+        return jsonify({"error": "Order not found"}), 404
+    
+    # Return the order status in JSON format
+    return jsonify({
+        "order_id": order.order_id,
+        "status": order.status
+    })
 
-bodycare_schema = {
-    "type": "object",
-    "properties": {
-        "skinBenefits": {
-            "type": "array",
-            "items": {"type": "string", "enum": ["Hydrating", "Exfoliating", "Soothing"]},
-            "minItems": 1
-        },
-        "ingredients": {
-            "type": "array",
-            "items": {"type": "string"},
-            "minItems": 1
-        },
-        "texture": {"type": "string", "enum": ["Cream", "Gel", "Scrub"]},
-        "volume": {"type": "string", "pattern": "^[0-9]+(ml|oz)$"}
-    },
-    "required": ["skinBenefits", "ingredients", "texture", "volume"]
-}
+@app.route('/admin/order/<int:order_id>/invoice', methods=['GET']) # MAKE THIS SECURE!!!
+def generate_invoice(order_id):
+    # Query the Order by the given order_id
+    order = Order.query.get(order_id)
+    if order is None:
+        return jsonify({"error": "Order not found"}), 404
 
-nailcare_schema = {
-    "type": "object",
-    "properties": {
-        "nailPolish": {
-            "type": "object",
-            "properties": {
-                "finish": {"type": "string", "enum": ["Glossy", "Matte"]},
-                "color": {"type": "string"}
-            },
-            "required": ["finish", "color"]
-        },
-        "ingredients": {"type": "array", "items": {"type": "string"}, "minItems": 1},
-        "nailTools": {"type": "string"},
-        "treatments": {"type": "array", "items": {"type": "string"}, "minItems": 1}
-    },
-    "required": ["nailPolish", "ingredients"]
-}
+    # Fetch associated customer and order items
+    customer = Customer.query.get(order.customer_id)
+    order_items = OrderItem.query.filter_by(order_id=order_id).all()
 
-mens_grooming_schema = {
-    "type": "object",
-    "properties": {
-        "skinType": {
-            "type": "array",
-            "items": {"type": "string", "enum": ["Normal", "Oily", "Sensitive"]},
-            "minItems": 1
-        },
-        "ingredients": {
-            "type": "array",
-            "items": {"type": "string"},
-            "minItems": 1
-        },
-        "purpose": {
-            "type": "array",
-            "items": {"type": "string", "enum": ["Hydration", "Soothing post-shave", "Fragrance"]},
-            "minItems": 1
-        },
-        "volume": {"type": "string", "pattern": "^[0-9]+(ml|oz)$"}
-    },
-    "required": ["skinType", "ingredients", "purpose", "volume"]
-}
+    # Create a PDF in memory
+    pdf_buffer = BytesIO()
+    pdf = canvas.Canvas(pdf_buffer, pagesize=A4)
+    width, height = A4
 
-tools_accessories_schema = {
-    "type": "object",
-    "properties": {
-        "material": {"type": "string", "enum": ["Synthetic", "Natural Bristles"]},
-        "heatSettings": {"type": "integer", "minimum": 1, "maximum": 10}, 
-        "size": {"type": "string", "enum": ["Compact", "Full-size"]},
-        "powerWattage": {"type": "string", "pattern": "^[0-9]+W$"}  
-    },
-    "required": ["material", "heatSettings", "size", "powerWattage"]
-}
+    # Basic Invoice Layout
+    pdf.setTitle(f"Invoice_{order_id}")
+    pdf.setFont("Helvetica-Bold", 20)
+    pdf.drawString(200, height - 100, f"Invoice for Order #{order_id}")
+    pdf.setFont("Helvetica", 12)
 
-natural_organic_schema = {
-    "type": "object",
-    "properties": {
-        "ingredients": {
-            "type": "array",
-            "items": {"type": "string"},
-            "minItems": 1,
-            "description": "Must be 100% organic and plant-based"
-        },
-        "certifications": {
-            "type": "array",
-            "items": {"type": "string", "enum": ["USDA Organic", "Cruelty-Free"]},
-            "minItems": 1
-        },
-        "packaging": {"type": "string", "enum": ["Recyclable", "Biodegradable"]}
-    },
-    "required": ["ingredients", "certifications", "packaging"]
-}
+    # Customer Information
+    pdf.drawString(50, height - 150, f"Customer: {customer.name}")
+    pdf.drawString(50, height - 170, f"Email: {customer.email}")
+    pdf.drawString(50, height - 190, f"Address: {customer.address}")
+    pdf.drawString(50, height - 210, f"Phone: {customer.phone}")
 
-beauty_supplements_schema = {
-    "type": "object",
-    "properties": {
-        "type": {"type": "string", "enum": ["Capsules", "Powders", "Gummies"]},
-        "keyNutrients": {
-            "type": "array",
-            "items": {"type": "string", "enum": ["Biotin", "Collagen", "Vitamin E", "Zinc"]},
-            "minItems": 1
-        },
-        "purpose": {
-            "type": "array",
-            "items": {"type": "string", "enum": ["Strengthen hair", "Improve skin elasticity", "Nail health"]},
-            "minItems": 1
-        },
-        "servingSize": {"type": "string", "pattern": "^[0-9]+-day supply$"}  
-    },
-    "required": ["type", "keyNutrients", "purpose", "servingSize"]
-}
+    # Order Information
+    pdf.drawString(50, height - 250, f"Order Date: {order.created_at.strftime('%Y-%m-%d')}")
+    pdf.drawString(50, height - 270, f"Status: {order.status}")
+    pdf.drawString(50, height - 290, f"Total Price: ${order.total_price:.2f}")
+
+    # Table of Ordered Items
+    data = [["Product ID", "Quantity", "Price at Purchase", "Total Price"]]
+    for item in order_items:
+        product = Product.query.get(item.product_id)
+        data.append([
+            item.product_id,
+            item.quantity,
+            f"${item.price_at_purchase:.2f}",
+            f"${item.quantity * item.price_at_purchase:.2f}"
+        ])
+    
+    # Add the order items table to the PDF
+    table = Table(data, colWidths=[100, 100, 150, 150])
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+    ]))
+    table.wrapOn(pdf, width, height)
+    table.drawOn(pdf, 50, height - 400)
+
+    pdf.showPage()
+    pdf.save()
+    pdf_buffer.seek(0)
+
+    # Send the PDF as a file to download
+    return send_file(pdf_buffer, as_attachment=True, download_name=f"Invoice_Order_{order_id}.pdf", mimetype='application/pdf')
+
+ALLOWED_ORDER_STATUSES = {"Pending", "Processing", "Shipped", "Delivered"}
+
+
+@app.route('/admin/update-order-status/<int:order_id>', methods=['PUT'])    # admin can update the status of the order 
+                                                                            # validated admin input
+#AUTHENTICATION!!
+def update_order_status(order_id):
+    data = request.get_json()
+    new_status = data.get("status")
+
+    # Check if the status provided is valid
+    if new_status not in ALLOWED_ORDER_STATUSES:
+        return jsonify({"error": "Invalid status. Allowed values are 'pending', 'processing', 'shipped', 'delivered'"}), 400
+
+    # Fetch the order from the database
+    order = Order.query.get(order_id)
+    if not order:
+        return jsonify({"error": "Order not found"}), 404
+
+    # Update the order status
+    order.status = new_status
+    db.session.commit()
+
+    return jsonify({
+        "message": "Order status updated successfully",
+        "order_id": order.order_id,
+        "new_status": order.status
+    }), 200
+
+@app.route('/admin/returns', methods=['GET']) # view return requests
+def view_returns():
+    status = request.args.get("status")
+    if status:
+        returns = Return.query.filter_by(status=status).all()
+    else:
+        returns = Return.query.all()
+        
+    return jsonify([{
+        "return_id": r.return_id,
+        "order_id": r.order_id,
+        "product_id": r.product_id,
+        "status": r.status,
+        "reason": r.reason,
+        "action": r.action,
+        "requested_at": r.requested_at,
+        "processed_at": r.processed_at
+    } for r in returns])
+
+@app.route('/admin/returns/<int:return_id>/process', methods=['POST']) # process return request
+def process_return(return_id):
+    # Get the return request from the database
+    return_request = Return.query.get_or_404(return_id)
+
+    # Ensure the action is either Refund or Replacement
+    action = request.json.get('action', None)
+    status = request.json.get('status', None)
+    
+    #validation
+    if not action or action not in ['Refund', 'Replacement']:
+        return jsonify({"error": "Invalid action. Action must be 'Refund' or 'Replacement'."}), 400
+    
+    if not status or status not in ['Approved', 'Rejected']:
+        return jsonify({"error": "Invalid status. Status must be 'Approved' or 'Rejected'."}), 400
+
+    # Update the return request based on action and status
+    return_request.status = status
+    return_request.action = action
+    return_request.processed_at = datetime.utcnow()
+
+    # Commit the changes to the database
+    db.session.commit()
+
+    return jsonify({
+        'message': 'Return request processed successfully.',
+        'return_id': return_request.return_id,
+        'status': return_request.status,
+        'action': return_request.action,
+        'processed_at': return_request.processed_at
+    }), 200
+
+# --------------------------------Product Management System ----------------------------
 
 # ! FIX: THIS FUNCTION SCANS THE FILE TO MAKE SURE THE CONTENT IS NOT MALICIOUS
 def scan_file(file_path):
