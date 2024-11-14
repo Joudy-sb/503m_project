@@ -695,15 +695,24 @@ beauty_supplements_schema = {
     "required": ["type", "keyNutrients", "purpose", "servingSize"]
 }
 
-# ! FIX: THIS FUNCTION SCANS THE FILE TO MAKE SURE THE CONTENT IS NOT MALICIOUS
+# ! FIX: THIS FUNCTION SCANS THE FILE TO MAKE SURE THE CONTENT IS NOT MALICIOUS    
 def scan_file(file_path):
-    cd = pyclamd.ClamdNetworkSocket()  
     try:
-        result = cd.scan_file(file_path) 
-        return result
+        cd = pyclamd.ClamdNetworkSocket(host='127.0.0.1', port=3310)
+        if cd.ping():
+            print("ClamAV Daemon is running.")
+            result = cd.scan_file(file_path)
+            if result:
+                for file, status in result.items():
+                    if status[0] == "FOUND":
+                        return jsonify({"error": f"Virus {status[1]} found in {file}"}), 400
+            print("No infection found.")
+            return jsonify({"message": "File is clean."}), 200
+        else:
+            print("ClamAV Daemon not responding.")
+            return jsonify({"error": "ClamAV Daemon not responding."}), 500
     except Exception as e:
-        print(f"Error scanning file: {e}")
-        return None
+        return jsonify({"error": str(e)}), 500
     
 # THIS FUNCTION VALIDATES FILE TYPE
 def allowed_file_type(file_path):
@@ -765,14 +774,14 @@ def validate_information(product):
         subcategory_id = int(product['subcategory_id'])
         if not Subcategory.query.filter_by(subcategory_id=subcategory_id).first():
             raise ValueError(f"Subcategory does not exist")
-         # Validate 'specifications'
+        # Validate 'specifications'
         specifications = product.get('specifications', '{}')  
         # Parse 'specifications' if it's a string
         if isinstance(specifications, str):
             try:
                 specifications = json.loads(specifications)
             except json.JSONDecodeError as e:
-                raise ValueError("Invalid JSON format for specifications")
+                raise ValueError(f"Invalid JSON format for specifications")
         # Ensure 'specifications' is a dictionary
         if not isinstance(specifications, dict):
             raise ValueError("Invalid input for specifications: must be a JSON string or dictionary")
@@ -808,10 +817,12 @@ def validate_information(product):
         if image_data:
             if not allowed_file(image_data.filename):
                 raise ValueError("Invalid file extension for image")
-            file_path = os.path.join(app.config['UPLOAD_FOLDER'], image_data.filename)
+            file_path = os.path.normpath(os.path.join(app.config['UPLOAD_FOLDER'], image_data.filename))
             image_data.save(file_path)
+            print(file_path)
             if not allowed_file_type(file_path):
                 raise ValueError("Invalid file type for image")
+            scan_file(file_path)
         return {
             "name": name,
             "description": description,
@@ -823,8 +834,9 @@ def validate_information(product):
             "subcategory_id": subcategory_id,
             "image_data": file_path
         }
-    except ValueError:
-        raise ValueError("An error occurred. Please check your input.")
+    except ValueError as e:
+        raise ValueError("An error occurred")
+
     
 # THIS FUNCTION ADDS A PRODUCT TO THE DATABASE
 @app.route('/admin/product-management/add', methods=['POST'])
@@ -857,7 +869,7 @@ def add_product():
         return jsonify({"message": "Product added successfully!"}), 201
     except Exception as e:
         db.session.rollback()
-        return jsonify({"error": "Pleace check input and try again"}), 500
+        return jsonify({"error": "Unable to add product, try again"}), 500
 
 # THIS FUNCTION DELETES A PRODUCT FROM DATABASE
 @app.route('/admin/product-management/delete', methods=['POST'])
@@ -923,10 +935,11 @@ def bulk_add():
             return jsonify({"error": "No file provided"}), 400
         if not allowed_file(csv_file.filename):
             raise ValueError("Invalid file extension for CSV")
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], csv_file.filename)
+        file_path = os.path.normpath(os.path.join(app.config['UPLOAD_FOLDER'], csv_file.filename))
         csv_file.save(file_path)
         if not allowed_file_type(file_path):
             raise ValueError("Invalid file type for CSV")
+        scan_file(file_path)
         with open(file_path, mode='r', encoding='utf-8') as file:
             csv_reader = csv.DictReader(file)
             errors = []
@@ -947,7 +960,7 @@ def bulk_add():
                     })                    
                     successful_entries.append(validated_product)
                 except ValueError as e:
-                    errors.append({"row": row_index, "error": "Please check inputs"})
+                    errors.append({"row": row_index, "error": str(e)})
             if successful_entries:
                 insert_query = """
                 INSERT INTO Products (name, description, price, image_data, specifications, 
