@@ -135,6 +135,17 @@ class ActivityLog(db.Model):
     action = db.Column(db.Text, nullable=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
+class Return(db.Model):
+    __tablename__ = 'Returns'
+    return_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    order_id = db.Column(db.Integer, db.ForeignKey('Orders.order_id'), nullable=False)
+    product_id = db.Column(db.Integer, db.ForeignKey('Products.product_id'), nullable=False)
+    status = db.Column(db.String(50), nullable=False, default="Pending")  # Pending, Approved, Rejected, Processed
+    reason = db.Column(db.Text, nullable=False)
+    action = db.Column(db.String(50), nullable=False)  # Refund, Replacement
+    requested_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
+    processed_at = db.Column(db.DateTime)
+
 # THIS FUNCTION CREATES PRE-SET CATEGORIES
 def create_categories():
     categories = [
@@ -326,7 +337,7 @@ def get_order_status(order_id):
         "status": order.status
     })
 
-@app.route('/admin/order/<int:order_id>/invoice', methods=['GET'])
+@app.route('/admin/order/<int:order_id>/invoice', methods=['GET']) # MAKE THIS SECURE!!!
 def generate_invoice(order_id):
     # Query the Order by the given order_id
     order = Order.query.get(order_id)
@@ -391,7 +402,7 @@ def generate_invoice(order_id):
     # Send the PDF as a file to download
     return send_file(pdf_buffer, as_attachment=True, download_name=f"Invoice_Order_{order_id}.pdf", mimetype='application/pdf')
 
-ALLOWED_ORDER_STATUSES = {"pending", "processing", "shipped", "delivered"}
+ALLOWED_ORDER_STATUSES = {"Pending", "Processing", "Shipped", "Delivered"}
 
 
 @app.route('/admin/update-order-status/<int:order_id>', methods=['PUT'])    # admin can update the status of the order 
@@ -418,6 +429,57 @@ def update_order_status(order_id):
         "message": "Order status updated successfully",
         "order_id": order.order_id,
         "new_status": order.status
+    }), 200
+
+@app.route('/admin/returns', methods=['GET']) # view return requests
+def view_returns():
+    status = request.args.get("status")
+    if status:
+        returns = Return.query.filter_by(status=status).all()
+    else:
+        returns = Return.query.all()
+        
+    return jsonify([{
+        "return_id": r.return_id,
+        "order_id": r.order_id,
+        "product_id": r.product_id,
+        "status": r.status,
+        "reason": r.reason,
+        "action": r.action,
+        "requested_at": r.requested_at,
+        "processed_at": r.processed_at
+    } for r in returns])
+
+@app.route('/admin/returns/<int:return_id>/process', methods=['POST']) # process return request
+def process_return(return_id):
+    # Get the return request from the database
+    return_request = Return.query.get_or_404(return_id)
+
+    # Ensure the action is either Refund or Replacement
+    action = request.json.get('action', None)
+    status = request.json.get('status', None)
+    
+    #validation
+    if not action or action not in ['Refund', 'Replacement']:
+        return jsonify({"error": "Invalid action. Action must be 'Refund' or 'Replacement'."}), 400
+    
+    if not status or status not in ['Approved', 'Rejected']:
+        return jsonify({"error": "Invalid status. Status must be 'Approved' or 'Rejected'."}), 400
+
+    # Update the return request based on action and status
+    return_request.status = status
+    return_request.action = action
+    return_request.processed_at = datetime.utcnow()
+
+    # Commit the changes to the database
+    db.session.commit()
+
+    return jsonify({
+        'message': 'Return request processed successfully.',
+        'return_id': return_request.return_id,
+        'status': return_request.status,
+        'action': return_request.action,
+        'processed_at': return_request.processed_at
     }), 200
 
 # --------------------------------Product Management System ----------------------------
