@@ -20,7 +20,7 @@ ALLOWED_EXTENSIONS = [
 
 app.config['UPLOAD_FOLDER'] = 'C:/Users/joudy/Desktop/FALL_2024/EECE503M/Project/503m_project/Uploads'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///ecommerce_platform.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:12345678910lc@localhost:3306/ecommerce_platform'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
@@ -252,13 +252,42 @@ def view_all_warehouses_inventory():
 ## TO DO: AUTOMATIC UPDATE OF AVAILABIILITY OF PRODUCTS, AND LOW STOCK LEVEL ALERTS
 
 
-# Order Management System
+# --------------------------------Order Management System ----------------------------
+
+@app.route('/admin/orders', methods=['GET']) #manage orders -> gets all orders from the db 
+# MUST AUTHENTICATE ADMIN FIRST
+def manage_orders():
+    status = request.args.get('status')  # Get the status filter from the query params
+    
+    # Query orders based on the status filter, if provided
+    if status:
+        orders = Order.query.filter_by(status=status).all()  # Filter orders by status
+    else:
+        orders = Order.query.all()  # Get all orders if no filter is applied
+    
+    # Prepare the orders data for JSON response
+    orders_data = []
+    for order in orders:
+        order_data = {
+            'order_id': order.order_id,
+            'customer_id': order.customer_id,
+            'status': order.status,
+            'total_price': order.total_price,
+            'created_at': order.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+            'updated_at': order.updated_at.strftime('%Y-%m-%d %H:%M:%S') if order.updated_at else None,
+        }
+        
+        orders_data.append(order_data)
+
+    # Return the orders data as a JSON response
+    return jsonify(orders_data)
 
 
 
 
 
-# Product Management
+# --------------------------------Product Management System ----------------------------
+
 # ! FIX: THIS FUNCTION SCANS THE FILE TO MAKE SURE THE CONTENT IS NOT MALICIOUS
 def scan_file(file_path):
     cd = pyclamd.ClamdNetworkSocket()  
