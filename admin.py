@@ -8,6 +8,8 @@ from datetime import datetime,timedelta, timezone
 import magic 
 import pyclamd
 from sqlalchemy import func
+from jsonschema import validate, ValidationError
+import csv
 
 app = Flask(__name__)
 
@@ -18,17 +20,22 @@ ALLOWED_EXTENSIONS = [
     'csv',
 ]
 
+# File upload configuration
 app.config['UPLOAD_FOLDER'] = 'C:/Users/joudy/Desktop/FALL_2024/EECE503M/Project/503m_project/Uploads'
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///ecommerce_platform.db'
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # Limit to 16 MB
+
+# Database configuration
+app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:987654321@localhost:3306/ecommerce_platform'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# Initialize SQLAlchemy
 db = SQLAlchemy(app)
 
 class Product(db.Model):
     __tablename__ = 'Products'
     product_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     name = db.Column(db.String(100), nullable=False)
-    description = db.Column(db.Text)
+    description = db.Column(db.String(400))
     price = db.Column(db.Float, nullable=False)
     image_data = db.Column(db.LargeBinary)
     specifications = db.Column(db.JSON)
@@ -83,7 +90,7 @@ class Customer(db.Model):
     name = db.Column(db.String(100), nullable=False)
     email = db.Column(db.String(100), unique=True, nullable=False)
     membership_tier = db.Column(db.String(50), nullable=False)
-    address = db.Column(db.Text)
+    address = db.Column(db.String(200))
     phone = db.Column(db.String(15))
     password_hash = db.Column(db.String(100), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
@@ -219,7 +226,6 @@ def create_subcategories():
     db.session.commit()
     print("Subcategories added successfully!")
 
-
 # Inventory Management System
 @app.route('/admin/inventory/view_all_warehouses', methods=['GET']) #real time montioring of stock level across warehouses
 def view_all_warehouses_inventory():
@@ -259,6 +265,214 @@ def view_all_warehouses_inventory():
 
 
 # Product Management
+# JSON SPECIFICATIONS 
+skincare_specifications_schema = {
+    "type": "object",
+    "properties": {
+        "skinType": {
+            "type": "array",
+            "items": {
+                "type": "string",
+                "enum": ["Normal", "Dry", "Oily", "Combination", "Sensitive"]
+            },
+            "minItems": 1
+        },
+        "ingredients": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            },
+            "minItems": 1
+        },
+        "purpose": {
+            "type": "array",
+            "items": {
+                "type": "string",
+                "enum": ["Hydration", "Anti-aging", "Brightening", "Sun protection", "Deep cleansing"]
+            },
+            "minItems": 1
+        },
+        "texture": {
+            "type": "string",
+            "enum": ["Gel", "Cream", "Foam", "Oil"]
+        },
+        "volume": {
+            "type": "string",
+            "pattern": "^[0-9]+(ml|ML|oz|OZ)$" 
+        }
+    },
+    "required": ["skinType", "ingredients", "purpose", "texture", "volume"]
+}
+
+makeup_schema = {
+    "type": "object",
+    "properties": {
+        "shade": {"type": "string", "minLength": 1},
+        "finish": {"type": "string", "enum": ["Matte", "Satin", "Glossy", "Dewy"]},
+        "coverage": {"type": "string", "enum": ["Light", "Medium", "Full"]},
+        "waterproof": {"type": "boolean"},
+        "ingredients": {
+            "type": "array",
+            "items": {"type": "string", "enum": ["Paraben-free", "Cruelty-free", "Vegan"]},
+            "minItems": 1
+        },
+        "volumeWeight": {"type": "string", "pattern": "^[0-9]+(ml|g|oz)$"}
+    },
+    "required": ["shade", "finish", "coverage", "waterproof", "ingredients", "volumeWeight"]
+}
+
+haircare_schema = {
+    "type": "object",
+    "properties": {
+        "hairType": {
+            "type": "array",
+            "items": {"type": "string", "enum": ["Straight", "Wavy", "Curly", "Coily", "Colored"]},
+            "minItems": 1
+        },
+        "purpose": {
+            "type": "array",
+            "items": {"type": "string", "enum": ["Repair", "Hydration", "Volume", "Anti-dandruff", "Color protection"]},
+            "minItems": 1
+        },
+        "ingredients": {
+            "type": "array",
+            "items": {"type": "string"},
+            "minItems": 1
+        },
+        "volume": {"type": "string", "pattern": "^[0-9]+(ml|L|oz)$"},
+        "tools": {"type": "string"}
+    },
+    "required": ["hairType", "purpose", "ingredients", "volume"]
+}
+
+fragrances_schema = {
+    "type": "object",
+    "properties": {
+        "fragranceFamily": {"type": "string", "enum": ["Floral", "Woody", "Citrus", "Fresh", "Oriental"]},
+        "concentration": {"type": "string", "enum": ["Eau de Parfum (EDP)", "Eau de Toilette (EDT)", "Eau de Cologne (EDC)"]},
+        "notes": {
+            "type": "object",
+            "properties": {
+                "top": {"type": "string"},
+                "middle": {"type": "string"},
+                "base": {"type": "string"}
+            },
+            "required": ["top", "middle", "base"]
+        },
+        "volume": {"type": "string", "pattern": "^[0-9]+(ml|oz)$"}
+    },
+    "required": ["fragranceFamily", "concentration", "notes", "volume"]
+}
+
+bodycare_schema = {
+    "type": "object",
+    "properties": {
+        "skinBenefits": {
+            "type": "array",
+            "items": {"type": "string", "enum": ["Hydrating", "Exfoliating", "Soothing"]},
+            "minItems": 1
+        },
+        "ingredients": {
+            "type": "array",
+            "items": {"type": "string"},
+            "minItems": 1
+        },
+        "texture": {"type": "string", "enum": ["Cream", "Gel", "Scrub"]},
+        "volume": {"type": "string", "pattern": "^[0-9]+(ml|oz)$"}
+    },
+    "required": ["skinBenefits", "ingredients", "texture", "volume"]
+}
+
+nailcare_schema = {
+    "type": "object",
+    "properties": {
+        "nailPolish": {
+            "type": "object",
+            "properties": {
+                "finish": {"type": "string", "enum": ["Glossy", "Matte"]},
+                "color": {"type": "string"}
+            },
+            "required": ["finish", "color"]
+        },
+        "ingredients": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+        "nailTools": {"type": "string"},
+        "treatments": {"type": "array", "items": {"type": "string"}, "minItems": 1}
+    },
+    "required": ["nailPolish", "ingredients"]
+}
+
+mens_grooming_schema = {
+    "type": "object",
+    "properties": {
+        "skinType": {
+            "type": "array",
+            "items": {"type": "string", "enum": ["Normal", "Oily", "Sensitive"]},
+            "minItems": 1
+        },
+        "ingredients": {
+            "type": "array",
+            "items": {"type": "string"},
+            "minItems": 1
+        },
+        "purpose": {
+            "type": "array",
+            "items": {"type": "string", "enum": ["Hydration", "Soothing post-shave", "Fragrance"]},
+            "minItems": 1
+        },
+        "volume": {"type": "string", "pattern": "^[0-9]+(ml|oz)$"}
+    },
+    "required": ["skinType", "ingredients", "purpose", "volume"]
+}
+
+tools_accessories_schema = {
+    "type": "object",
+    "properties": {
+        "material": {"type": "string", "enum": ["Synthetic", "Natural Bristles"]},
+        "heatSettings": {"type": "integer", "minimum": 1, "maximum": 10}, 
+        "size": {"type": "string", "enum": ["Compact", "Full-size"]},
+        "powerWattage": {"type": "string", "pattern": "^[0-9]+W$"}  
+    },
+    "required": ["material", "heatSettings", "size", "powerWattage"]
+}
+
+natural_organic_schema = {
+    "type": "object",
+    "properties": {
+        "ingredients": {
+            "type": "array",
+            "items": {"type": "string"},
+            "minItems": 1,
+            "description": "Must be 100% organic and plant-based"
+        },
+        "certifications": {
+            "type": "array",
+            "items": {"type": "string", "enum": ["USDA Organic", "Cruelty-Free"]},
+            "minItems": 1
+        },
+        "packaging": {"type": "string", "enum": ["Recyclable", "Biodegradable"]}
+    },
+    "required": ["ingredients", "certifications", "packaging"]
+}
+
+beauty_supplements_schema = {
+    "type": "object",
+    "properties": {
+        "type": {"type": "string", "enum": ["Capsules", "Powders", "Gummies"]},
+        "keyNutrients": {
+            "type": "array",
+            "items": {"type": "string", "enum": ["Biotin", "Collagen", "Vitamin E", "Zinc"]},
+            "minItems": 1
+        },
+        "purpose": {
+            "type": "array",
+            "items": {"type": "string", "enum": ["Strengthen hair", "Improve skin elasticity", "Nail health"]},
+            "minItems": 1
+        },
+        "servingSize": {"type": "string", "pattern": "^[0-9]+-day supply$"}  
+    },
+    "required": ["type", "keyNutrients", "purpose", "servingSize"]
+}
+
 # ! FIX: THIS FUNCTION SCANS THE FILE TO MAKE SURE THE CONTENT IS NOT MALICIOUS
 def scan_file(file_path):
     cd = pyclamd.ClamdNetworkSocket()  
@@ -269,61 +483,103 @@ def scan_file(file_path):
         print(f"Error scanning file: {e}")
         return None
     
+# THIS FUNCTION VALIDATES FILE TYPE
+def allowed_file_type(file_path):
+    mime = magic.Magic(mime=True) 
+    file_mime_type = mime.from_file(file_path)  
+    print(f"Detected MIME type: {file_mime_type}")
+    return file_mime_type in ['image/png', 'image/jpeg', 'image/jpg', 'file/csv', 'text/plain']
+
+# THIS FUNCTION VALIDATES FILE EXTENSION
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+# THIS FUNCTION VALIDATES PRODUCT INFORMATION
 def validate_information(product):
     try:
         # Validate 'name'
         name = product["name"]
         if not isinstance(name, str):
-            raise ValueError("Invalid input for name, must be a string")
-
+            raise ValueError("Name must be a string")
+        if not name.replace(" ", "").isalpha():
+            raise ValueError("Name must have only alphabet characters")
+        if len(name) > 100:
+            raise ValueError("Name too long")
         # Validate 'description'
         description = product['description']
         if not isinstance(description, str):
             raise ValueError("Invalid input for description, must be a string")
-
+        if not description.replace(" ", "").isalpha():
+            raise ValueError("Description must have only alphabet characters")
+        if len(description) > 400:
+            raise ValueError("Description too long")
         # Validate 'price'
         price = product['price']
         try:
             price = float(price)
         except (ValueError, TypeError):
             raise ValueError("Invalid input for price, must be a float")
-
-        # Validate 'specifications'
-        specifications = product.get('specifications', '{}')  # Default to empty JSON object if missing
-        try:
-            print(f"Specifications received: {specifications}")  # Debugging line
-            if isinstance(specifications, str):
-                specifications = json.loads(specifications)  # Parse JSON string
-            elif not isinstance(specifications, dict):
-                raise ValueError("Invalid input for specifications, must be a valid JSON string or dictionary")
-        except (ValueError, TypeError):
-            raise ValueError("Invalid input for specifications, must be valid JSON")
-
-        # Convert back to JSON string for storage
-        specifications_json = json.dumps(specifications)
-
+        if price <= 0:
+            raise ValueError("Invalid input for price, must be strictly positive")
         # Validate 'stock_level'
         stock_level = product['stock_level']
         try:
             stock_level = int(stock_level)
         except (ValueError, TypeError):
             raise ValueError("Invalid input for stock_level, must be an integer")
-
+        if stock_level <= 0:
+            raise ValueError("Invalid input for stock, must be strictly positive")
         # Validate 'warehouse_location'
         warehouse_location = product['warehouse_location']
         if not isinstance(warehouse_location, str):
             raise ValueError("Invalid input for warehouse_location, must be a string")
-
+        if not warehouse_location.replace(" ", "").isalnum():
+            raise ValueError("Invalid input for warehouse_location, must only contain numerical and alphabet characters")
         # Validate 'category_id'
         category_id = int(product['category_id'])
         if not Category.query.filter_by(category_id=category_id).first():
-            raise ValueError(f"Category with ID {category_id} does not exist")
-
+            raise ValueError(f"Category does not exist")
         # Validate 'subcategory_id'
         subcategory_id = int(product['subcategory_id'])
         if not Subcategory.query.filter_by(subcategory_id=subcategory_id).first():
-            raise ValueError(f"Subcategory with ID {subcategory_id} does not exist")
-
+            raise ValueError(f"Subcategory does not exist")
+         # Validate 'specifications'
+        specifications = product.get('specifications', '{}')  
+        # Parse 'specifications' if it's a string
+        if isinstance(specifications, str):
+            try:
+                specifications = json.loads(specifications)
+            except json.JSONDecodeError as e:
+                raise ValueError("Invalid JSON format for specifications")
+        # Ensure 'specifications' is a dictionary
+        if not isinstance(specifications, dict):
+            raise ValueError("Invalid input for specifications: must be a JSON string or dictionary")
+        # Validate 'specifications' against schema
+        try:
+            if category_id == 1:
+                validate(instance=specifications, schema=skincare_specifications_schema)
+            if category_id == 2:
+                validate(instance=specifications, schema=makeup_schema)
+            if category_id == 3:
+                validate(instance=specifications, schema=haircare_schema)
+            if category_id == 4:
+                validate(instance=specifications, schema=fragrances_schema)
+            if category_id == 5:
+                validate(instance=specifications, schema=bodycare_schema)
+            if category_id == 6:
+                validate(instance=specifications, schema=nailcare_schema)
+            if category_id == 7:
+                validate(instance=specifications, schema=mens_grooming_schema)
+            if category_id == 8:
+                validate(instance=specifications, schema=tools_accessories_schema)
+            if category_id == 9:
+                validate(instance=specifications, schema=natural_organic_schema)
+            if category_id == 10:
+                validate(instance=specifications, schema=beauty_supplements_schema)
+        except ValidationError as e:
+            raise ValueError("Schema validation failed")
+        specifications_json = json.dumps(specifications)
+        print("Specifications are valid!")
         # Validate image file (if provided)
         image_data = product['image_data']
         file_path = None
@@ -334,7 +590,6 @@ def validate_information(product):
             image_data.save(file_path)
             if not allowed_file_type(file_path):
                 raise ValueError("Invalid file type for image")
-
         return {
             "name": name,
             "description": description,
@@ -346,27 +601,14 @@ def validate_information(product):
             "subcategory_id": subcategory_id,
             "image_data": file_path
         }
-
-    except ValueError as e:
-        raise e
-
-# THIS FUNCTION VALIDATES FILE TYPE
-def allowed_file_type(file_path):
-    mime = magic.Magic(mime=True) 
-    file_mime_type = mime.from_file(file_path)  
-    print(f"Detected MIME type: {file_mime_type}")
-    return file_mime_type in ['image/png', 'image/jpeg', 'image/jpg', 'file/csv', 'text/plain']
-
-# THIS FUNCTION VALIDATES FILE EXTENSION
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+    except ValueError:
+        raise ValueError("An error occurred. Please check your input.")
     
 # THIS FUNCTION ADDS A PRODUCT TO THE DATABASE
 @app.route('/admin/product-management/add', methods=['POST'])
 def add_product():
     try:
         data = request.form
-
         product = {
             "name": data.get('name'),
             "description": data.get('description'),
@@ -378,11 +620,8 @@ def add_product():
             "subcategory_id": data.get('subcategory_id'),
             "image_data" : request.files.get('image_data')
         }
-
         validated_product = validate_information(product)
         validated_product['specifications'] = json.dumps(validated_product['specifications'])
-
-        # Insert product into DB
         raw_query = """
         INSERT INTO Products (name, description, price, image_data, specifications, category_id, subcategory_id, stock_level, warehouse_location, created_at)
         VALUES (:name, :description, :price, :image_data, :specifications, :category_id, :subcategory_id, :stock_level, :warehouse_location, :created_at)
@@ -393,50 +632,37 @@ def add_product():
         )
         db.session.execute(query)
         db.session.commit()
-        
         return jsonify({"message": "Product added successfully!"}), 201
-
-    except ValueError as ve:
-        return jsonify({"error": str(ve)}), 400
-
     except Exception as e:
         db.session.rollback()
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Please check your input"}), 500
 
 # THIS FUNCTION DELETES A PRODUCT FROM DATABASE
 @app.route('/admin/product-management/delete', methods=['POST'])
 def delete_product():
-    #verify that the admin position is allowed to do this method
-
     try:
         data = request.get_json()
         product_id = data.get('product_id')
         if not product_id:
             return jsonify({"error": "Product ID is required"}), 400
-    
         product = Product.query.filter_by(product_id=product_id).first()
         if product is None:
-            return jsonify({"error": f"No product found with ID {product_id}"}), 404
-        
+            return jsonify({"error": f"No product found"}), 404
         db.session.delete(product)
         db.session.commit()
-        return jsonify({"message": f"Product with ID {product_id} deleted successfully"}), 200
-
+        return jsonify({"message": f"Product deleted successfully"}), 200
     except Exception as e:
         db.session.rollback()
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Can't delete product, try again"}), 500
 
 # THIS FUNCTION UPDATES A PRODUCT FROM DATABASE
 @app.route('/admin/product-management/update/<int:product_id>', methods=['PUT'])
 def update_product(product_id):
     try: 
         product = Product.query.filter_by(product_id=product_id).first()
-        
         if not product:
             return jsonify({"error": "Product not found"}), 404
-        
         data = request.form
-
         updated_product = {
             "name": data.get('name') or product.name,
             "description": data.get('description') or product.description,
@@ -448,11 +674,7 @@ def update_product(product_id):
             "subcategory_id": data.get('subcategory_id') or product.subcategory_id,
             "image_data": request.files.get('image_data')
         }
-
-        # Validate and process inputs
         validated_data = validate_information(updated_product)
-
-        # after verification, update product to the database
         raw_query = """
         UPDATE Products
         SET name = :name,description = :description, price = :price, image_data = :image_data,specifications = :specifications, category_id = :category_id, subcategory_id = :subcategory_id, stock_level = :stock_level, warehouse_location = :warehouse_location, updated_at = :updated_at
@@ -467,36 +689,26 @@ def update_product(product_id):
         db.session.execute(query)
         db.session.commit()
         return jsonify({"message": "Product updated successfully!"}), 200
-    
     except Exception as e:
         db.session.rollback()
-        return jsonify({"error": str(e)}), 500
-    
-import csv
+        return jsonify({"error": "Can't update product, try again"}), 500
 
 @app.route('/admin/product-management/add-csv', methods=['POST'])
 def bulk_add():
     try:
         csv_file = request.files.get('csv_file')
-        
         if not csv_file:
             return jsonify({"error": "No file provided"}), 400
-
         if not allowed_file(csv_file.filename):
             raise ValueError("Invalid file extension for CSV")
-
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], csv_file.filename)
         csv_file.save(file_path)
-
         if not allowed_file_type(file_path):
             raise ValueError("Invalid file type for CSV")
-
         with open(file_path, mode='r', encoding='utf-8') as file:
             csv_reader = csv.DictReader(file)
-            
             errors = []
             successful_entries = []
-            
             for row_index, row in enumerate(csv_reader, start=1):
                 try:
                     # Validate and process each product row
@@ -509,13 +721,11 @@ def bulk_add():
                         "warehouse_location": row['warehouse_location'],
                         "category_id": row['category_id'],
                         "subcategory_id": row['subcategory_id'],
-                        "image_data": None  # No image data from CSV
+                        "image_data": None 
                     })                    
                     successful_entries.append(validated_product)
-
                 except ValueError as e:
-                    errors.append({"row": row_index, "error": str(e)})
-
+                    errors.append({"row": row_index, "error": "Please check inputs"})
             if successful_entries:
                 insert_query = """
                 INSERT INTO Products (name, description, price, image_data, specifications, 
@@ -526,21 +736,46 @@ def bulk_add():
                 for product in successful_entries:
                     product['created_at'] = datetime.utcnow()  
                     db.session.execute(text(insert_query), product)
-                
                 db.session.commit()
-
         response = {
             "message": f"Successfully added {len(successful_entries)} products.",
             "errors": errors  
         }
         return jsonify(response), 201
-
-    except ValueError as ve:
-        return jsonify({"error": str(ve)}), 400
-
     except Exception as e:
         db.session.rollback()
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "can't process the file"}), 500
+    
+@app.route('/admin/product-management/price-promotion/<int:product_id>', methods = ['POST'])
+def promotion(product_id):
+    try:
+        data = request.form 
+        price_promotion = data.get('price_promotion')
+        try:
+            price_promotion = int(price_promotion)
+        except (ValueError, TypeError):
+            raise ValueError("Invalid input for promotion, must be an int")
+        if price_promotion > 100 or price_promotion <=0:
+            return jsonify({"error": "promotion must be between 0 and 100"})
+        product = Product.query.filter_by(product_id=product_id).first()
+        price_promoted = product.price*(1-(price_promotion/100))
+        raw_query = """
+        UPDATE Products
+        SET price = :price, updated_at = :updated_at
+        WHERE 
+            product_id = :product_id
+        """
+        query = text(raw_query).bindparams(
+            price = price_promoted,
+            updated_at=datetime.utcnow(),
+            product_id = product_id
+        )
+        db.session.execute(query)
+        db.session.commit()
+        return jsonify({"message": "Product promotion added successfully!"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": "can't place promotion, try again"}), 500
 
 if __name__ == '__main__':
     with app.app_context():
