@@ -695,7 +695,7 @@ beauty_supplements_schema = {
     "required": ["type", "keyNutrients", "purpose", "servingSize"]
 }
 
-# ! FIX: THIS FUNCTION SCANS THE FILE TO MAKE SURE THE CONTENT IS NOT MALICIOUS    
+# THIS FUNCTION SCANS THE FILE TO MAKE SURE THE CONTENT IS NOT MALICIOUS    
 def scan_file(file_path):
     try:
         cd = pyclamd.ClamdNetworkSocket(host='127.0.0.1', port=3310)
@@ -810,7 +810,7 @@ def validate_information(product):
         except ValidationError as e:
             raise ValueError("Schema validation failed")
         specifications_json = json.dumps(specifications)
-        print("Specifications are valid!")
+        #print("Specifications are valid!")
         # Validate image file (if provided)
         image_data = product['image_data']
         file_path = None
@@ -836,7 +836,6 @@ def validate_information(product):
         }
     except ValueError as e:
         raise ValueError("An error occurred")
-
     
 # THIS FUNCTION ADDS A PRODUCT TO THE DATABASE
 @app.route('/admin/product-management/add', methods=['POST'])
@@ -872,11 +871,9 @@ def add_product():
         return jsonify({"error": "Unable to add product, try again"}), 500
 
 # THIS FUNCTION DELETES A PRODUCT FROM DATABASE
-@app.route('/admin/product-management/delete', methods=['POST'])
-def delete_product():
+@app.route('/admin/product-management/delete/<int:product_id>', methods=['POST'])
+def delete_product(product_id):
     try:
-        data = request.get_json()
-        product_id = data.get('product_id')
         if not product_id:
             return jsonify({"error": "Product ID is required"}), 400
         product = Product.query.filter_by(product_id=product_id).first()
@@ -927,6 +924,7 @@ def update_product(product_id):
         db.session.rollback()
         return jsonify({"error": "Can't update product, try again"}), 500
 
+# THIS FUNCTION ADDS BULK AMOUNT OF PRODUCTS
 @app.route('/admin/product-management/add-csv', methods=['POST'])
 def bulk_add():
     try:
@@ -981,6 +979,7 @@ def bulk_add():
         db.session.rollback()
         return jsonify({"error": "can't process the file"}), 500
     
+# THIS FUNCTION ADDS PROMOTION TO PRODUCTS
 @app.route('/admin/product-management/price-promotion/<int:product_id>', methods = ['POST'])
 def promotion(product_id):
     try:
@@ -1022,5 +1021,4 @@ if __name__ == '__main__':
         if not Subcategory.query.first():
             create_subcategories()
             print("Subategories created!")
-
     app.run(debug=True)
