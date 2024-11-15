@@ -9,7 +9,7 @@ import os
 from sqlalchemy.sql import text
 from jsonschema import validate, ValidationError
 from utils.product_json_specifications import skincare_specifications_schema, makeup_schema, haircare_schema, fragrances_schema, bodycare_schema, nailcare_schema, mens_grooming_schema, tools_accessories_schema, natural_organic_schema, beauty_supplements_schema
-
+from flask_jwt_extended import jwt_required, get_jwt_identity
 
 product_management = Blueprint('product_management', __name__)
 
@@ -164,6 +164,7 @@ def validate_information(product):
     
 # THIS FUNCTION ADDS A PRODUCT TO THE DATABASE
 @product_management.route('/product-management/add', methods=['POST'])
+@jwt_required()
 def add_product():
     try:
         data = request.form
