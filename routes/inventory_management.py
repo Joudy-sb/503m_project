@@ -1,9 +1,13 @@
 from flask import Blueprint, jsonify, request
+from flask_jwt_extended import jwt_required
 from database import Product
+from routes.login import role_required
 
 inventory_management = Blueprint('inventory_management', __name__)
 
 @inventory_management.route('/inventory/view_all_warehouses', methods=['GET']) #real time montioring of stock level across warehouses
+@jwt_required()
+@role_required(["Inventory_Manager"])
 def view_all_warehouses_inventory():
     """
     View all warehouses with their products and stock levels.

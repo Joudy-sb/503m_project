@@ -82,16 +82,10 @@ class Admin(db.Model):
     admin_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     name = db.Column(db.String(100), nullable=False)
     email = db.Column(db.String(100), unique=True, nullable=False)
-    role = db.Column(db.String(50), nullable=False)
-    password_hash = db.Column(db.String(100), nullable=False)
+    role = db.Column(db.String(100), nullable=False)
+    password = db.Column(db.String(100), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
-
-class Role(db.Model):
-    __tablename__ = 'Roles'
-    role_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    name = db.Column(db.String(100), nullable=False)
-    permissions = db.Column(db.Text)
 
 class Promotion(db.Model):
     __tablename__ = 'Promotions'
