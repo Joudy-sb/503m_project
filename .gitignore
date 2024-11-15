@@ -1,0 +1,11 @@
+# Python virtual environment
+venv/
+
+# Flask instance folder
+instance/
+
+# Python byte-compiled files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
