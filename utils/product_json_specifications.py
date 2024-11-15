@@ -163,7 +163,10 @@ tools_accessories_schema = {
         "material": {"type": "string", "enum": ["Synthetic", "Natural Bristles"]},
         "heatSettings": {"type": "integer", "minimum": 1, "maximum": 10}, 
         "size": {"type": "string", "enum": ["Compact", "Full-size"]},
-        "powerWattage": {"type": "string", "pattern": "^[0-9]+W$"}  
+        "powerWattage": {
+            "type": "string",
+            "pattern": "^(?:[0-9]+W|N/A)$"
+        }
     },
     "required": ["material", "heatSettings", "size", "powerWattage"]
 }

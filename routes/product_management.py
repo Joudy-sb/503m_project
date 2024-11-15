@@ -1,4 +1,5 @@
 from flask import request, jsonify, Blueprint
+import requests
 from database import db, Product, Category, Subcategory
 from datetime import datetime
 import magic 
@@ -10,6 +11,7 @@ from sqlalchemy.sql import text
 from jsonschema import validate, ValidationError
 from utils.product_json_specifications import skincare_specifications_schema, makeup_schema, haircare_schema, fragrances_schema, bodycare_schema, nailcare_schema, mens_grooming_schema, tools_accessories_schema, natural_organic_schema, beauty_supplements_schema
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask import current_app
 
 product_management = Blueprint('product_management', __name__)
 
@@ -18,19 +20,31 @@ ALLOWED_EXTENSIONS = [
     'jpg',
     'jpeg',
     'csv',
+    'jfif',
+    'xlsx',
 ]
 
+API_URL = "http://127.0.0.1:8000/api/get-products"
+
+
 # THIS FUNCTION SCANS THE FILE TO MAKE SURE THE CONTENT IS NOT MALICIOUS    
-def scan_file(file_path):
+def scan_file(file):
     try:
         cd = pyclamd.ClamdNetworkSocket(host='127.0.0.1', port=3310)
         if cd.ping():
             print("ClamAV Daemon is running.")
-            result = cd.scan_file(file_path)
+            
+            # Check if the input is a file-like object or a file path
+            if hasattr(file, 'read'):  # It's a file-like object
+                result = cd.scan_stream(file.read())
+            else:  # It's a file path
+                result = cd.scan_file(file)
+            
             if result:
-                for file, status in result.items():
+                for scanned_file, status in result.items():
                     if status[0] == "FOUND":
-                        return jsonify({"error": f"Virus {status[1]} found in {file}"}), 400
+                        return jsonify({"error": f"Virus {status[1]} found in {scanned_file}"}), 400
+            
             print("No infection found.")
             return jsonify({"message": "File is clean."}), 200
         else:
@@ -44,11 +58,17 @@ def allowed_file_type(file_path):
     mime = magic.Magic(mime=True) 
     file_mime_type = mime.from_file(file_path)  
     print(f"Detected MIME type: {file_mime_type}")
-    return file_mime_type in ['image/png', 'image/jpeg', 'image/jpg', 'file/csv', 'text/plain']
+    return file_mime_type in ['image/png', 'image/jpeg', 'image/jpg', 'file/csv', 'text/plain', "image/jfif"]
 
 # THIS FUNCTION VALIDATES FILE EXTENSION
-def allowed_file(filename):
+def allowed_file(image_data):
+    if hasattr(image_data, 'filename'):
+        filename = image_data.filename
+    else:
+        filename = os.path.basename(image_data)  
+    print(filename)
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
 
 # THIS FUNCTION VALIDATES PRODUCT INFORMATION
 def validate_information(product):
@@ -140,14 +160,18 @@ def validate_information(product):
         image_data = product['image_data']
         file_path = None
         if image_data:
-            if not allowed_file(image_data.filename):
+            if not allowed_file(image_data):
                 raise ValueError("Invalid file extension for image")
-            file_path = os.path.normpath(os.path.join(product_management.config['UPLOAD_FOLDER'], image_data.filename))
-            image_data.save(file_path)
+            if hasattr(image_data, 'save'):  # It’s a file-like object from an upload
+                file_path = os.path.normpath(os.path.join(current_app.config['UPLOAD_FOLDER'], image_data.filename))
+                image_data.save(file_path)
+            elif isinstance(image_data, str):  # It's a file path
+                file_path = os.path.normpath(image_data)
+            print("jusquici tout va bien2")
             print(file_path)
             if not allowed_file_type(file_path):
                 raise ValueError("Invalid file type for image")
-            scan_file(file_path)
+            #scan_file(file_path)
         return {
             "name": name,
             "description": description,
@@ -160,9 +184,10 @@ def validate_information(product):
             "image_data": file_path
         }
     except ValueError as e:
-        raise ValueError("An error occurred")
+        raise ValueError(str(e))
     
 # THIS FUNCTION ADDS A PRODUCT TO THE DATABASE
+@jwt_required()
 @product_management.route('/product-management/add', methods=['POST'])
 @jwt_required()
 def add_product():
@@ -194,7 +219,7 @@ def add_product():
         return jsonify({"message": "Product added successfully!"}), 201
     except Exception as e:
         db.session.rollback()
-        return jsonify({"error": "Unable to add product, try again"}), 500
+        return jsonify({"error": str(e)}), 500
 
 # THIS FUNCTION DELETES A PRODUCT FROM DATABASE
 @product_management.route('/product-management/delete/<int:product_id>', methods=['POST'])
@@ -259,7 +284,7 @@ def bulk_add():
             return jsonify({"error": "No file provided"}), 400
         if not allowed_file(csv_file.filename):
             raise ValueError("Invalid file extension for CSV")
-        file_path = os.path.normpath(os.path.join(product_management.config['UPLOAD_FOLDER'], csv_file.filename))
+        file_path = os.path.normpath(os.path.join(current_app.config['UPLOAD_FOLDER'], csv_file.filename))
         csv_file.save(file_path)
         if not allowed_file_type(file_path):
             raise ValueError("Invalid file type for CSV")
@@ -336,3 +361,29 @@ def promotion(product_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": "can't place promotion, try again"}), 500
+    
+@product_management.route('/product-management/add-api', methods=['POST'])
+def api_add():
+    try:
+        response = requests.get(API_URL)
+        response.raise_for_status()
+        products = response.json()
+        for product in products:
+            validated_product = validate_information(product)
+            validated_product['specifications'] = json.dumps(validated_product['specifications'])
+            raw_query = """
+            INSERT INTO Products (name, description, price, image_data, specifications, category_id, subcategory_id, stock_level, warehouse_location, created_at)
+            VALUES (:name, :description, :price, :image_data, :specifications, :category_id, :subcategory_id, :stock_level, :warehouse_location, :created_at)
+            """
+            query = text(raw_query).bindparams(
+                **validated_product,
+                created_at=datetime.utcnow()
+            )
+            db.session.execute(query)
+        db.session.commit()
+        return jsonify({"message": f"{len(products)} products added successfully!"}), 201
+    except requests.exceptions.RequestException as e:
+        return "Error fetching product details: " + str(e), 500
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
