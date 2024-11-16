@@ -1,8 +1,9 @@
 from functools import wraps
-from flask import send_file, Blueprint
-from flask import jsonify, request
-from flask_jwt_extended import jwt_required, get_jwt_identity, create_access_token
+from flask import send_file, Blueprint, current_app, jsonify, request, make_response
+
+from flask_jwt_extended import jwt_required, get_jwt_identity, create_access_token, set_access_cookies
 from database import Admin
+import jwt
 
 login = Blueprint('login', __name__)
 
@@ -17,7 +18,11 @@ def login_auth():
     if not user or user.password != password:  
         return jsonify({"msg": "Bad username or password"}), 401
     access_token = create_access_token(identity={"id": user.admin_id, "role": user.role})
-    return jsonify(access_token=access_token)
+
+    # Store the token in an HTTP-only, secure cookie
+    response = make_response({"msg": "Login successful"})
+    set_access_cookies(response, access_token)
+    return response 
 
 def role_required(allowed_roles):
     def decorator(func):
@@ -30,3 +35,4 @@ def role_required(allowed_roles):
             return func(*args, **kwargs)
         return wrapper
     return decorator
+

@@ -26,15 +26,14 @@ app.register_blueprint(login, url_prefix='/admin')
 
 # handler for missing authorization headers
 @jwt.unauthorized_loader
-def custom_unauthorized_response(error_message):
-    return jsonify({
-        "msg": "Unauthorized"
-    }), 401
+def custom_unauthorized_response(err):
+    return jsonify({"msg": "Unauthorized"}), 401
+
 
 
 if __name__ == '__main__':
     with app.app_context():
-        db.drop_all()
+        # db.drop_all()
         db.create_all()  
         print("Database and tables created!")
         if not Category.query.first():
