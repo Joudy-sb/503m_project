@@ -28,6 +28,12 @@ def create_admins():
             "email": "lynn@example.com",
             "role": "Order_Manager",
             "password": "password789"
+        },
+        {
+            "name": "Khaled Dassouki",
+            "email": "khaled@example.com",
+            "role": "Admin",
+            "password": "password321"
         }
     ]
 

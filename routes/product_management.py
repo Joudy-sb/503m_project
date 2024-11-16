@@ -193,7 +193,7 @@ def validate_information(product):
 # THIS FUNCTION ADDS A PRODUCT TO THE DATABASE
 @product_management.route('/product-management/add', methods=['POST'])
 @jwt_required()
-@role_required(["Product_Manager"])
+@role_required(["Product_Manager", "Admin"])
 def add_product():
     try:
         data = request.form
@@ -228,7 +228,7 @@ def add_product():
 # THIS FUNCTION DELETES A PRODUCT FROM DATABASE
 @product_management.route('/product-management/delete/<int:product_id>', methods=['POST'])
 @jwt_required()
-@role_required(["Product_Manager"])
+@role_required(["Product_Manager", "Admin"])
 def delete_product(product_id):
     try:
         if not product_id:
@@ -246,7 +246,7 @@ def delete_product(product_id):
 # THIS FUNCTION UPDATES A PRODUCT FROM DATABASE
 @product_management.route('/product-management/update/<int:product_id>', methods=['PUT'])
 @jwt_required()
-@role_required(["Product_Manager"])
+@role_required(["Product_Manager", "Admin"])
 def update_product(product_id):
     try: 
         product = Product.query.filter_by(product_id=product_id).first()
@@ -286,7 +286,7 @@ def update_product(product_id):
 # THIS FUNCTION ADDS BULK AMOUNT OF PRODUCTS
 @product_management.route('/product-management/add-csv', methods=['POST'])
 @jwt_required()
-@role_required(["Product_Manager"])
+@role_required(["Product_Manager", "Admin"])
 def bulk_add():
     try:
         csv_file = request.files.get('csv_file')
@@ -343,7 +343,7 @@ def bulk_add():
 # THIS FUNCTION ADDS PROMOTION TO PRODUCTS
 @product_management.route('/product-management/price-promotion/<int:product_id>', methods = ['POST'])
 @jwt_required()
-@role_required(["Product_Manager"])
+@role_required(["Product_Manager", "Admin"])
 def promotion(product_id):
     try:
         data = request.form 
@@ -390,7 +390,7 @@ def is_url_allowed(url):
 # THIS FUNCTION GET PRODUCTS FROM API AND ADD THEM
 @product_management.route('/product-management/add-api', methods=['POST'])
 @jwt_required()
-@role_required(["Product_Manager"])
+@role_required(["Product_Manager", "Admin"])
 def api_add():
     API_URL = request.json.get("api_url") 
     if not API_URL:
