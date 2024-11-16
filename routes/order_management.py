@@ -12,11 +12,14 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from werkzeug.utils import secure_filename
 
 
+from routes.login import role_required
+
 order_management = Blueprint('order_management', __name__)
 
 
 @order_management.route('/orders', methods=['GET']) #manage orders -> gets all orders from the db 
 @jwt_required()
+@role_required(["Order_Manager"])
 def manage_orders():
     status = request.args.get('status')  # Get the status filter from the query params
     

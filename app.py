@@ -1,11 +1,12 @@
 from flask import Flask, jsonify
-from database import db
+from database import Admin, db
 from routes.inventory_management import inventory_management
 from routes.order_management import order_management
 from routes.product_management import product_management
 from routes.login import login
 from config import Config
 from database import Category, Subcategory
+from utils.initial_admins import create_admins
 from utils.initial_categories_data import create_categories, create_subcategories
 from flask_jwt_extended import JWTManager
 
@@ -33,6 +34,7 @@ def custom_unauthorized_response(error_message):
 
 if __name__ == '__main__':
     with app.app_context():
+        db.drop_all()
         db.create_all()  
         print("Database and tables created!")
         if not Category.query.first():
@@ -41,4 +43,6 @@ if __name__ == '__main__':
         if not Subcategory.query.first():
             create_subcategories()
             print("Subategories created!")
+        if not Admin.query.first():
+            create_admins()
     app.run(debug=True)
