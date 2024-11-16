@@ -15,6 +15,7 @@ from routes.login import role_required
 from utils.product_json_specifications import skincare_specifications_schema, makeup_schema, haircare_schema, fragrances_schema, bodycare_schema, nailcare_schema, mens_grooming_schema, tools_accessories_schema, natural_organic_schema, beauty_supplements_schema
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from flask import current_app
+from utils.log_helper import log_activity
 
 product_management = Blueprint('product_management', __name__)
 
@@ -220,10 +221,20 @@ def add_product():
         )
         db.session.execute(query)
         db.session.commit()
+
+        # Log the "Add Product" activity
+        log_activity(
+            admin_id=get_jwt_identity()["id"],  # Get admin ID from JWT token
+            action="Add Product",
+            description=f"Added product '{product['name']}'"
+        )
+
         return jsonify({"message": "Product added successfully!"}), 201
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
+    
+
 
 # THIS FUNCTION DELETES A PRODUCT FROM DATABASE
 @product_management.route('/product-management/delete/<int:product_id>', methods=['POST'])
@@ -238,6 +249,14 @@ def delete_product(product_id):
             return jsonify({"error": f"No product found"}), 404
         db.session.delete(product)
         db.session.commit()
+
+        # Log the "Delete Product" activity
+        log_activity(
+            admin_id=get_jwt_identity()["id"],  # Get admin ID from JWT token
+            action="Delete Product",
+            description=f"Deleted product '{product['name']}'"
+        )
+
         return jsonify({"message": f"Product deleted successfully"}), 200
     except Exception as e:
         db.session.rollback()
@@ -264,6 +283,15 @@ def update_product(product_id):
             "subcategory_id": data.get('subcategory_id') or product.subcategory_id,
             "image_data": request.files.get('image_data') or product.image_data
         }
+        
+        # Capture changes for logging
+        changes = []
+        for field, new_value in product.items():
+            if hasattr(product, field):  # Check if the product has the field
+                old_value = getattr(product, field)
+                if new_value != old_value:
+                    changes.append(f"{field}: '{old_value}' -> '{new_value}'")
+
         validated_data = validate_information(updated_product)
         raw_query = """
         UPDATE Products
@@ -278,6 +306,17 @@ def update_product(product_id):
         )
         db.session.execute(query)
         db.session.commit()
+
+         # Log the activity
+        if changes:
+            description=f"Updated product ID {product_id}: " + "; ".join(changes)
+        else:
+            description=f"Updated product ID {product_id}, but no changes were made"
+        log_activity(
+            admin_id=get_jwt_identity()["id"],  # Get admin ID from JWT token
+            action="Update Product",
+            description=description
+        )
         return jsonify({"message": "Product updated successfully!"}), 200
     except Exception as e:
         db.session.rollback()
@@ -335,6 +374,12 @@ def bulk_add():
             "message": f"Successfully added {len(successful_entries)} products.",
             "errors": errors  
         }
+        # Log the activity
+        log_activity(
+            admin_id=get_jwt_identity()["id"],  # Get admin ID from JWT token
+            action="Bulk Add Products",
+            description=f"Added {len(successful_entries)} products from CSV file"
+        )
         return jsonify(response), 201
     except Exception as e:
         db.session.rollback()
@@ -369,6 +414,13 @@ def promotion(product_id):
         )
         db.session.execute(query)
         db.session.commit()
+
+        # Log the activity
+        log_activity(
+            admin_id=get_jwt_identity()["id"],  # Get admin ID from JWT token
+            action="Add Promotion",
+            description=f"Added promotion to product ID {product_id}"
+        )
         return jsonify({"message": "Product promotion added successfully!"}), 200
     except Exception as e:
         db.session.rollback()
@@ -416,6 +468,14 @@ def api_add():
             )
             db.session.execute(query)
         db.session.commit()
+
+        # Log the activity
+        log_activity(
+            admin_id=get_jwt_identity()["id"],  # Get admin ID from JWT token
+            action="Add Products from API",
+            description=f"Added {len(products)} products from API"
+        )
+
         return jsonify({"message": f"{len(products)} products added successfully!"}), 201
     except requests.exceptions.RequestException as e:
         return "Error fetching product details: " + str(e), 500
