@@ -3,6 +3,7 @@ from database import Admin, db
 from routes.inventory_management import inventory_management
 from routes.order_management import order_management
 from routes.product_management import product_management
+from routes.logger import logger
 from routes.login import login
 from config import Config
 from database import Category, Subcategory
@@ -22,6 +23,7 @@ app.register_blueprint(inventory_management, url_prefix='/admin')
 app.register_blueprint(order_management, url_prefix='/admin')
 app.register_blueprint(product_management, url_prefix='/admin')
 app.register_blueprint(login, url_prefix='/admin')
+app.register_blueprint(logger, url_prefix='/admin')
 
 
 # handler for missing authorization headers
@@ -33,7 +35,7 @@ def custom_unauthorized_response(err):
 
 if __name__ == '__main__':
     with app.app_context():
-        # db.drop_all()
+        db.drop_all()
         db.create_all()  
         print("Database and tables created!")
         if not Category.query.first():
