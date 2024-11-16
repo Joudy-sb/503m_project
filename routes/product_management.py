@@ -226,7 +226,7 @@ def add_product():
         log_activity(
             admin_id=get_jwt_identity()["id"],  # Get admin ID from JWT token
             action="Add Product",
-            description=f"Added product '{product.name}' with ID {product.product_id}"
+            description=f"Added product '{product['name']}'"
         )
 
         return jsonify({"message": "Product added successfully!"}), 201
@@ -254,7 +254,7 @@ def delete_product(product_id):
         log_activity(
             admin_id=get_jwt_identity()["id"],  # Get admin ID from JWT token
             action="Delete Product",
-            description=f"Deleted product '{product.name}' with ID {product.product_id}"
+            description=f"Deleted product '{product['name']}'"
         )
 
         return jsonify({"message": f"Product deleted successfully"}), 200
@@ -286,7 +286,7 @@ def update_product(product_id):
         
         # Capture changes for logging
         changes = []
-        for field, new_value in validated_data.items():
+        for field, new_value in product.items():
             if hasattr(product, field):  # Check if the product has the field
                 old_value = getattr(product, field)
                 if new_value != old_value:
