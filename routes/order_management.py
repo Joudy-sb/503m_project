@@ -8,7 +8,7 @@ from reportlab.pdfgen import canvas
 from reportlab.platypus import Table, TableStyle
 from flask import jsonify, request
 from database import Order, OrderItem, Customer, Product, Return, db
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask_jwt_extended import jwt_required, get_jwt_identity, get_csrf_token
 from werkzeug.utils import secure_filename
 
 
@@ -19,7 +19,7 @@ order_management = Blueprint('order_management', __name__)
 
 @order_management.route('/orders', methods=['GET']) #manage orders -> gets all orders from the db 
 @jwt_required()
-@role_required(["Order_Manager"])
+@role_required(["Order_Manager"]) #X-CSRF-TOKEN
 def manage_orders():
     status = request.args.get('status')  # Get the status filter from the query params
     
@@ -47,7 +47,8 @@ def manage_orders():
     return jsonify(orders_data)
 
 @order_management.route('/orderitems', methods=['GET']) #manage orders -> gets all order items from the db 
-# MUST AUTHENTICATE ADMIN FIRST
+@jwt_required()
+@role_required(["Order_Manager"])
 def get_order_items():
     # Query all OrderItems from the database
     order_items = OrderItem.query.all()
@@ -68,7 +69,8 @@ def get_order_items():
     return jsonify(order_items_list)
 
 @order_management.route('/order/status/<int:order_id>', methods=['GET']) # Track order status
-# MUST AUTHENTICATE ADMIN FIRST
+@jwt_required()
+@role_required(["Order_Manager"])
 def get_order_status(order_id):
     # Query the Order by the given order_id
     order = Order.query.get(order_id)
@@ -91,6 +93,8 @@ def sanitize_input(input_data):
     return input_data
 
 @order_management.route('/order/<int:order_id>/invoice', methods=['GET'])
+@jwt_required()
+@role_required(["Order_Manager"])
 def generate_invoice(order_id):
     # Query the Order by the given order_id
     order = Order.query.get(order_id)
@@ -174,9 +178,9 @@ def generate_invoice(order_id):
 ALLOWED_ORDER_STATUSES = {"Pending", "Processing", "Shipped", "Delivered"}
 
 
-@order_management.route('/update-order-status/<int:order_id>', methods=['PUT'])     # admin can update the status of the order 
-                                                                                    # validated admin input
-#AUTHENTICATION!! + right access
+@order_management.route('/update-order-status/<int:order_id>', methods=['PUT'])     # admin can update the status of the order   
+@jwt_required()
+@role_required(["Order_Manager"])                             
 def update_order_status(order_id):
     data = request.get_json()
 
@@ -203,9 +207,6 @@ def update_order_status(order_id):
     except Exception as e:
         # Rollback any changes made during this transaction
         db.session.rollback()
-    
-    # Return a generic error message to the client
-    return jsonify({"error": "Failed to update order status"}), 500
 
 
     return jsonify({
@@ -215,6 +216,8 @@ def update_order_status(order_id):
     }), 200
 
 @order_management.route('/returns', methods=['GET']) # view return requests
+@jwt_required()
+@role_required(["Order_Manager"])
 def view_returns():
     status = request.args.get("status")
     if status:
@@ -233,8 +236,11 @@ def view_returns():
         "processed_at": r.processed_at
     } for r in returns])
 
-@order_management.route('/returns/<int:return_id>/process', methods=['POST']) # process return request
+@order_management.route('/returns/<int:return_id>/process', methods=['PUT']) # process return request
+@jwt_required()
+@role_required(["Order_Manager"])
 def process_return(return_id):
+
     # Get the return request from the database
     return_request = Return.query.get_or_404(return_id)
 

@@ -15,5 +15,5 @@ class Config:
     JWT_TOKEN_LOCATION = ['cookies']  # Enable cookies for JWT
     JWT_COOKIE_SECURE = False  # Set to True in production (requires HTTPS)
     JWT_ACCESS_COOKIE_NAME = 'access_token'  # Name of the access token cookie
-    JWT_COOKIE_CSRF_PROTECT = False  # Disable CSRF for simplicity (consider enabling in production)
+    JWT_COOKIE_CSRF_PROTECT = True  # protect against CSRF
 
