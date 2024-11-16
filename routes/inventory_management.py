@@ -12,7 +12,7 @@ inventory_management = Blueprint('inventory_management', __name__)
 # VIEW ALL WAREHOUSES INVENTORY
 @inventory_management.route('/inventory/view_all_warehouses', methods=['GET'])
 @jwt_required()
-@role_required("Inventory_Manager")
+@role_required(["Inventory_Manager", "Admin"])
 def view_all_warehouses_inventory():
     """
     View all warehouses with their products and stock levels.
@@ -77,7 +77,7 @@ def view_all_warehouses_inventory():
 # GENERATE INVENTORY TURNOVER REPORT
 @inventory_management.route('/inventory/inventory_turnover_report', methods=['GET'])
 @jwt_required()
-@role_required("Inventory_Manager")
+@role_required(["Inventory_Manager", "Admin"])
 def generate_inventory_report():
     """
     Generate inventory turnover reports grouped by warehouse.
@@ -140,7 +140,7 @@ def generate_inventory_report():
 # MOST POPULAR PRODUCTS
 @inventory_management.route('/inventory/most_popular_products', methods=['GET'])
 @jwt_required()
-@role_required("Inventory_Manager")
+@role_required(["Inventory_Manager", "Admin"])
 def get_most_popular_products():
     """
     Retrieve the top 10 most popular products based on sales volume.
@@ -186,7 +186,7 @@ def get_most_popular_products():
 # PREDICT FUTURE DEMAND
 @inventory_management.route('/inventory/predict_demand_monthly', methods=['GET'])
 @jwt_required()
-@role_required("Inventory_Manager")
+@role_required(["Inventory_Manager", "Admin"])
 def predict_future_monthly_demand():
     """
     Predict future demand for the next 30 days based on the last 30 days of sales data.

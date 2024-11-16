@@ -19,8 +19,8 @@ order_management = Blueprint('order_management', __name__)
 
 @order_management.route('/orders', methods=['GET']) #manage orders -> gets all orders from the db 
 @jwt_required()
-@role_required(["Order_Manager"]) #X-CSRF-TOKEN
-def manage_orders():
+@role_required(["Order_Manager", "Admin"])  #X-CSRF-TOKEN
+
     status = request.args.get('status')  # Get the status filter from the query params
     
     # Query orders based on the status filter, if provided
@@ -48,7 +48,7 @@ def manage_orders():
 
 @order_management.route('/orderitems', methods=['GET']) #manage orders -> gets all order items from the db 
 @jwt_required()
-@role_required(["Order_Manager"])
+@role_required(["Order_Manager", "Admin"])
 def get_order_items():
     # Query all OrderItems from the database
     order_items = OrderItem.query.all()
@@ -70,7 +70,7 @@ def get_order_items():
 
 @order_management.route('/order/status/<int:order_id>', methods=['GET']) # Track order status
 @jwt_required()
-@role_required(["Order_Manager"])
+@role_required(["Order_Manager", "Admin"])
 def get_order_status(order_id):
     # Query the Order by the given order_id
     order = Order.query.get(order_id)
@@ -94,7 +94,7 @@ def sanitize_input(input_data):
 
 @order_management.route('/order/<int:order_id>/invoice', methods=['GET'])
 @jwt_required()
-@role_required(["Order_Manager"])
+@role_required(["Order_Manager", "Admin"])
 def generate_invoice(order_id):
     # Query the Order by the given order_id
     order = Order.query.get(order_id)
@@ -178,9 +178,11 @@ def generate_invoice(order_id):
 ALLOWED_ORDER_STATUSES = {"Pending", "Processing", "Shipped", "Delivered"}
 
 
-@order_management.route('/update-order-status/<int:order_id>', methods=['PUT'])     # admin can update the status of the order   
+
+@order_management.route('/update-order-status/<int:order_id>', methods=['PUT'])     # admin can update the status of the order 
+                                                                                    # validated admin input
 @jwt_required()
-@role_required(["Order_Manager"])                             
+@role_required(["Order_Manager", "Admin"])
 def update_order_status(order_id):
     data = request.get_json()
 
@@ -217,7 +219,7 @@ def update_order_status(order_id):
 
 @order_management.route('/returns', methods=['GET']) # view return requests
 @jwt_required()
-@role_required(["Order_Manager"])
+@role_required(["Order_Manager", "Admin"])
 def view_returns():
     status = request.args.get("status")
     if status:
@@ -236,9 +238,10 @@ def view_returns():
         "processed_at": r.processed_at
     } for r in returns])
 
+
 @order_management.route('/returns/<int:return_id>/process', methods=['PUT']) # process return request
 @jwt_required()
-@role_required(["Order_Manager"])
+@role_required(["Order_Manager", "Admin"])
 def process_return(return_id):
 
     # Get the return request from the database
