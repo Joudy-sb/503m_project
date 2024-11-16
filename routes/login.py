@@ -21,20 +21,15 @@ login = Blueprint('login', __name__)
 def login_auth():
     name = request.json.get("name", None)
     password = request.json.get("password", None)
-
-
     user = Admin.query.filter_by(name=name).first()
     if not user:  
         return jsonify({"msg": "Bad username or password"}), 401
-    
     try:
         # Verify the provided password with the stored hashed password
         ph.verify(user.password, password)
     except VerifyMismatchError:
         return jsonify({"msg": "Bad username or password"}), 401
-
     access_token = create_access_token(identity={"id": user.admin_id, "role": user.role})
-
     # Store the token in an HTTP-only, secure cookie
     response = make_response({"msg": "Login successful"})
     set_access_cookies(response, access_token)

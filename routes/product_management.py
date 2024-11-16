@@ -262,7 +262,7 @@ def update_product(product_id):
             "warehouse_location": data.get('warehouse_location') or product.warehouse_location,
             "category_id": data.get('category_id') or product.category_id,
             "subcategory_id": data.get('subcategory_id') or product.subcategory_id,
-            "image_data": request.files.get('image_data')
+            "image_data": request.files.get('image_data') or product.image_data
         }
         validated_data = validate_information(updated_product)
         raw_query = """
