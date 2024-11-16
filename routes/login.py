@@ -1,7 +1,7 @@
 from functools import wraps
 from flask import send_file, Blueprint, current_app, jsonify, request, make_response
 
-from flask_jwt_extended import jwt_required, get_jwt_identity, create_access_token, set_access_cookies
+from flask_jwt_extended import jwt_required, get_jwt_identity, create_access_token, set_access_cookies, get_csrf_token
 from database import Admin
 
 import jwt
@@ -31,7 +31,7 @@ def login_auth():
         return jsonify({"msg": "Bad username or password"}), 401
     access_token = create_access_token(identity={"id": user.admin_id, "role": user.role})
     # Store the token in an HTTP-only, secure cookie
-    response = make_response({"msg": "Login successful"})
+    response = jsonify({"msg": "Login successful", "csrf_token": get_csrf_token(access_token)})
     set_access_cookies(response, access_token)
     return response 
 
