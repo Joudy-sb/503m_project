@@ -13,3 +13,4 @@ SQLAlchemy==2.0.36
 typing_extensions==4.12.2
 Werkzeug==3.1.3
 reportlab
+flask-jwt-extended==4.6.0

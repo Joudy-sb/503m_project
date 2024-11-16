@@ -11,4 +11,5 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     # JWT Configuration
-    JWT_SECRET_KEY = "super-secret"
+    JWT_SECRET_KEY = "super-secret" #Use Environment Variables to make this key secure + change to smth more complex 
+    

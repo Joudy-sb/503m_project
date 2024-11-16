@@ -9,13 +9,14 @@ from reportlab.platypus import Table, TableStyle
 from flask import jsonify, request
 from database import Order, OrderItem, Customer, Product, Return, db
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from werkzeug.utils import secure_filename
+
 
 order_management = Blueprint('order_management', __name__)
 
 
 @order_management.route('/orders', methods=['GET']) #manage orders -> gets all orders from the db 
 @jwt_required()
-# MUST AUTHENTICATE ADMIN FIRST
 def manage_orders():
     status = request.args.get('status')  # Get the status filter from the query params
     
@@ -79,7 +80,14 @@ def get_order_status(order_id):
         "status": order.status
     })
 
-@order_management.route('/order/<int:order_id>/invoice', methods=['GET']) # MAKE THIS SECURE!!!
+# Sanitize input helper function (example for sanitizing text input)
+def sanitize_input(input_data):
+    if input_data:
+        # Escape potentially dangerous characters
+        return input_data.replace("<", "&lt;").replace(">", "&gt;").replace("&", "&amp;")
+    return input_data
+
+@order_management.route('/order/<int:order_id>/invoice', methods=['GET'])
 def generate_invoice(order_id):
     # Query the Order by the given order_id
     order = Order.query.get(order_id)
@@ -88,7 +96,12 @@ def generate_invoice(order_id):
 
     # Fetch associated customer and order items
     customer = Customer.query.get(order.customer_id)
+    if customer is None:
+        return jsonify({"error": "Customer not found"}), 404
+
     order_items = OrderItem.query.filter_by(order_id=order_id).all()
+    if not order_items:
+        return jsonify({"error": "No items found for this order"}), 404
 
     # Create a PDF in memory
     pdf_buffer = BytesIO()
@@ -101,15 +114,21 @@ def generate_invoice(order_id):
     pdf.drawString(200, height - 100, f"Invoice for Order #{order_id}")
     pdf.setFont("Helvetica", 12)
 
+    # Sanitize customer information to avoid XSS
+    sanitized_customer_name = sanitize_input(customer.name)
+    sanitized_email = sanitize_input(customer.email)
+    sanitized_address = sanitize_input(customer.address)
+    sanitized_phone = sanitize_input(customer.phone)
+
     # Customer Information
-    pdf.drawString(50, height - 150, f"Customer: {customer.name}")
-    pdf.drawString(50, height - 170, f"Email: {customer.email}")
-    pdf.drawString(50, height - 190, f"Address: {customer.address}")
-    pdf.drawString(50, height - 210, f"Phone: {customer.phone}")
+    pdf.drawString(50, height - 150, f"Customer: {sanitized_customer_name}")
+    pdf.drawString(50, height - 170, f"Email: {sanitized_email}")
+    pdf.drawString(50, height - 190, f"Address: {sanitized_address}")
+    pdf.drawString(50, height - 210, f"Phone: {sanitized_phone}")
 
     # Order Information
     pdf.drawString(50, height - 250, f"Order Date: {order.created_at.strftime('%Y-%m-%d')}")
-    pdf.drawString(50, height - 270, f"Status: {order.status}")
+    pdf.drawString(50, height - 270, f"Status: {sanitize_input(order.status)}")
     pdf.drawString(50, height - 290, f"Total Price: ${order.total_price:.2f}")
 
     # Table of Ordered Items
@@ -117,8 +136,8 @@ def generate_invoice(order_id):
     for item in order_items:
         product = Product.query.get(item.product_id)
         data.append([
-            item.product_id,
-            item.quantity,
+            sanitize_input(str(item.product_id)),
+            sanitize_input(str(item.quantity)),
             f"${item.price_at_purchase:.2f}",
             f"${item.quantity * item.price_at_purchase:.2f}"
         ])
@@ -141,31 +160,50 @@ def generate_invoice(order_id):
     pdf.save()
     pdf_buffer.seek(0)
 
+    # Ensure proper filename sanitization
+    filename = f"Invoice_Order_{order_id}.pdf"
+    secure_filename(filename)
+
     # Send the PDF as a file to download
-    return send_file(pdf_buffer, as_attachment=True, download_name=f"Invoice_Order_{order_id}.pdf", mimetype='order_managementlication/pdf')
+    return send_file(pdf_buffer, as_attachment=True, download_name=filename, mimetype='application/pdf')
+
 
 ALLOWED_ORDER_STATUSES = {"Pending", "Processing", "Shipped", "Delivered"}
 
 
-@order_management.route('/update-order-status/<int:order_id>', methods=['PUT'])    # admin can update the status of the order 
-                                                                            # validated admin input
-#AUTHENTICATION!!
+@order_management.route('/update-order-status/<int:order_id>', methods=['PUT'])     # admin can update the status of the order 
+                                                                                    # validated admin input
+#AUTHENTICATION!! + right access
 def update_order_status(order_id):
     data = request.get_json()
+
+    if not data or not isinstance(data, dict):
+        return jsonify({"error": "Invalid request payload"}), 400
+
     new_status = data.get("status")
 
     # Check if the status provided is valid
     if new_status not in ALLOWED_ORDER_STATUSES:
-        return jsonify({"error": "Invalid status. Allowed values are 'pending', 'processing', 'shipped', 'delivered'"}), 400
+        return jsonify({"error": "Invalid input"}), 400
 
     # Fetch the order from the database
     order = Order.query.get(order_id)
     if not order:
         return jsonify({"error": "Order not found"}), 404
 
-    # Update the order status
-    order.status = new_status
-    db.session.commit()
+    try:
+        # Update the order status
+        order.status = new_status
+
+        # Attempt to commit changes to the database
+        db.session.commit()
+    except Exception as e:
+        # Rollback any changes made during this transaction
+        db.session.rollback()
+    
+    # Return a generic error message to the client
+    return jsonify({"error": "Failed to update order status"}), 500
+
 
     return jsonify({
         "message": "Order status updated successfully",

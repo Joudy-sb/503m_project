@@ -9,12 +9,11 @@ login = Blueprint('login', __name__)
 
 
 
-@login.route("/login", methods=["POST"])
+@login.route("/login", methods=["POST"]) 
 def login_auth():
     username = request.json.get("username", None)
     password = request.json.get("password", None)
 
-    # Replace with your user authentication logic
     if username != "admin" or password != "admin":  
         return jsonify({"msg": "Bad username or password"}), 401
 
