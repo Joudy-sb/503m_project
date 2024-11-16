@@ -1,158 +1,246 @@
-from flask import Blueprint, jsonify, request
-from database import Product, Subcategory, Category,db
-from sqlalchemy import text
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask import Blueprint, jsonify
+from flask_jwt_extended import jwt_required
+from sqlalchemy import func
+from database import db, Product, Subcategory, Category, InventoryLog
+from routes.login import role_required
+from sqlalchemy.sql import case
+from sqlalchemy import func, Date, text
+
+
 inventory_management = Blueprint('inventory_management', __name__)
 
-@inventory_management.route('/inventory/view_all_warehouses', methods=['GET']) #real time montioring of stock level across warehouses
+# VIEW ALL WAREHOUSES INVENTORY
+@inventory_management.route('/inventory/view_all_warehouses', methods=['GET'])
 @jwt_required()
+@role_required("Inventory_Manager")
 def view_all_warehouses_inventory():
-
     """
     View all warehouses with their products and stock levels.
     """
     try:
-        low_stock_threshold = 10  # Set low-stock threshold
+        low_stock_threshold = 10  # Products with stock below this level will trigger an alert
 
-        # Fetch distinct warehouse names from the Products table
+        # Fetch all distinct warehouse locations
         warehouses = db.session.query(Product.warehouse_location).distinct()
 
-        inventory = []
-        low_stock_alerts = []
+        inventory = []  # List to hold inventory details for all warehouses
+        low_stock_alerts = []  # List to collect products with low stock
 
         for warehouse in warehouses:
-            warehouse_location = warehouse.warehouse_location
-            warehouse_inventory = {"warehouse_name": warehouse_location, "products": []}
-            products = Product.query.filter_by(warehouse_location=warehouse_location).all()
+            # Query products in the current warehouse
+            products = (
+                db.session.query(
+                    Product.product_id,
+                    Product.name,
+                    Product.stock_level,
+                    Subcategory.name.label("subcategory_name"),
+                    Category.name.label("category_name")
+                )
+                .join(Subcategory, Product.subcategory_id == Subcategory.subcategory_id)
+                .join(Category, Subcategory.category_id == Category.category_id)
+                .filter(Product.warehouse_location == warehouse.warehouse_location)
+                .all()
+            )
 
+            # Prepare inventory details for the current warehouse
+            warehouse_inventory = {"warehouse_name": warehouse.warehouse_location, "products": []}
             for product in products:
-                # Fetch subcategory and category details
-                subcategory = Subcategory.query.get(product.subcategory_id)
-                category =  Category.query.get(product.category_id)
-
                 # Add product details to the warehouse inventory
                 warehouse_inventory["products"].append({
                     "product_id": product.product_id,
                     "name": product.name,
                     "stock_level": product.stock_level,
-                    "subcategory": subcategory.name,
-                    "category": category.name
+                    "subcategory": product.subcategory_name,
+                    "category": product.category_name
                 })
 
-                # Add to low-stock alerts if below threshold
+                # Check if product stock is below the threshold and add to alerts if necessary
                 if product.stock_level < low_stock_threshold:
                     low_stock_alerts.append({
                         "product_id": product.product_id,
                         "name": product.name,
                         "stock_level": product.stock_level,
-                        "subcategory": subcategory.name,
-                        "category": category.name,
-                        "warehouse_name": warehouse_location
+                        "subcategory": product.subcategory_name,
+                        "category": product.category_name,
+                        "warehouse_name": warehouse.warehouse_location
                     })
 
+            # Add the warehouse inventory to the final list
             inventory.append(warehouse_inventory)
 
-        return jsonify({
-            "inventory": inventory,
-            "low_stock_alerts": low_stock_alerts
-        }), 200
-    except Exception as e:
-        return jsonify({"error": "Can't View Warehouse Inventories"}), 500 #str(e) if we wanna see the error
+        return jsonify({"inventory": inventory, "low_stock_alerts": low_stock_alerts}), 200
+    except Exception:
+        # Return an error message if something goes wrong
+        return jsonify({"error": "Can't View Warehouse Inventories"}), 500
 
 
-## TO DO: AUTOMATIC UPDATE OF AVAILABIILITY OF PRODUCTS, AND LOW STOCK LEVEL ALERTS
-
-
-## INVENTORY REPORT BY WAREHOUSE
-@inventory_management.route('/inventory/iventory_turnover_report', methods=['GET'])
+# GENERATE INVENTORY TURNOVER REPORT
+@inventory_management.route('/inventory/inventory_turnover_report', methods=['GET'])
+@jwt_required()
+@role_required("Inventory_Manager")
 def generate_inventory_report():
     """
-    Generate inventory reports grouped by warehouse, including turnover.
+    Generate inventory turnover reports grouped by warehouse.
+    Turnover is calculated based on sales volume and product price.
     """
     try:
-        # Fetch distinct warehouse names from the Products table
+        # Fetch all distinct warehouse locations
         warehouses = db.session.query(Product.warehouse_location).distinct()
 
-        report_data = []
+        report_data = []  # List to hold turnover details for all warehouses
 
         for warehouse in warehouses:
-            warehouse_name = warehouse.warehouse_location
-            warehouse_report = {"warehouse_name": warehouse_name, "products": []}
-            products = Product.query.filter_by(warehouse_location=warehouse_name).all()
+            # Query products and calculate turnover for the current warehouse
+            products = (
+                db.session.query(
+                    Product.product_id,
+                    Product.name,
+                    Product.stock_level,
+                    Subcategory.name.label("subcategory_name"),
+                    Category.name.label("category_name"),
+                    func.coalesce(
+                        func.sum(
+                            case(
+                                (InventoryLog.change < 0, func.abs(InventoryLog.change) * Product.price),
+                                else_=0
+                            )
+                        ),
+                        0
+                    ).label("total_turnover")  # Default turnover to 0 if no sales
+                )
+                .join(Subcategory, Product.subcategory_id == Subcategory.subcategory_id)
+                .join(Category, Subcategory.category_id == Category.category_id)
+                .outerjoin(InventoryLog, InventoryLog.product_id == Product.product_id)  # Include products with no logs
+                .filter(Product.warehouse_location == warehouse.warehouse_location)
+                .group_by(Product.product_id)
+                .all()
+            )
 
+            # Prepare report details for the current warehouse
+            warehouse_report = {"warehouse_name": warehouse.warehouse_location, "products": []}
             for product in products:
-                # Calculate turnover from InventoryLogs
-                logs = db.session.execute(
-                text("""
-                    SELECT SUM(ABS(`change`) * price) AS total_turnover
-                    FROM inventoryLogs
-                    JOIN Products ON inventoryLogs.product_id = Products.product_id
-                    WHERE inventoryLogs.product_id = :product_id AND `change` < 0
-                """),
-                {"product_id": product.product_id}
-                ).fetchone()
-                turnover = logs.total_turnover if logs.total_turnover else 0
-
-                # Fetch subcategory and category details
-                subcategory = Subcategory.query.get(product.subcategory_id)
-                category = Category.query.get(product.category_id)
-
-                # Add product details to the warehouse report
                 warehouse_report["products"].append({
                     "product_id": product.product_id,
                     "name": product.name,
                     "stock_level": product.stock_level,
-                    "turnover": turnover,
-                    "subcategory": subcategory.name,
-                    "category": category.name
+                    "turnover": product.total_turnover or 0,  # Default to 0 if no sales
+                    "subcategory": product.subcategory_name,
+                    "category": product.category_name
                 })
 
+            # Add the warehouse report to the final list
             report_data.append(warehouse_report)
 
         return jsonify({"report": report_data}), 200
     except Exception as e:
-        return jsonify({"error": "Can't Generate Inventory Turnover Report"}), 500 #str(e) if we wanna see the error
+        # Return an error message if something goes wrong
+        return jsonify({"error": f"Can't Generate Inventory Turnover Report"}), 500
 
 
-## most popular products
+# MOST POPULAR PRODUCTS
 @inventory_management.route('/inventory/most_popular_products', methods=['GET'])
+@jwt_required()
+@role_required("Inventory_Manager")
 def get_most_popular_products():
     """
-    Retrieve the most popular products based on sales volume or frequency of transactions.
+    Retrieve the top 10 most popular products based on sales volume.
     """
     try:
-        # Query to get most popular products by sales volume
-        popular_by_sales = db.session.execute(
-            text("""
-                SELECT product_id, SUM(ABS(`change`)) AS total_sales
-                FROM inventoryLogs
-                WHERE `change` < 0
-                GROUP BY product_id
-                ORDER BY total_sales DESC
-                LIMIT 10
-            """)
-        ).fetchall()
+        # Query top 10 products with the highest sales volume
+        products = (
+            db.session.query(
+                Product.product_id,
+                Product.name,
+                Subcategory.name.label("subcategory_name"),
+                Category.name.label("category_name"),
+                func.sum(func.abs(InventoryLog.change)).label("total_sales")
+            )
+            .join(Subcategory, Product.subcategory_id == Subcategory.subcategory_id)
+            .join(Category, Subcategory.category_id == Category.category_id)
+            .join(InventoryLog, InventoryLog.product_id == Product.product_id)
+            .filter(InventoryLog.change < 0)
+            .group_by(Product.product_id)
+            .order_by(func.sum(func.abs(InventoryLog.change)).desc())
+            .limit(10)
+            .all()
+        )
 
-        popular_products = []
-
-        for rank, entry in enumerate(popular_by_sales, start=1):  # Add ranks with enumerate()
-            # Fetch product details
-            product = Product.query.get(entry.product_id)
-            subcategory = Subcategory.query.get(product.subcategory_id)
-            category = Category.query.get(product.category_id)
-
-            # Add product details to the response
-            popular_products.append({
-                "rank": rank,  # Add the rank
+        results = []
+        for rank, product in enumerate(products, start=1):
+            # Add ranked product details to the final list
+            results.append({
+                "rank": rank,
                 "product_id": product.product_id,
                 "name": product.name,
-                "total_sales": entry.total_sales,
-                "subcategory": subcategory.name,
-                "category": category.name
+                "total_sales": product.total_sales,
+                "subcategory": product.subcategory_name,
+                "category": product.category_name
             })
 
-        return jsonify({"popular_products": popular_products}), 200
+        return jsonify({"popular_products": results}), 200
     except Exception as e:
-        return jsonify({"error": "Can't Generate Popular Products Report"}), 500 #str(e) if we wanna see the error
+        # Return an error message if something goes wrong
+        return jsonify({"error": f"Can't Generate Popular Products Report"}), 500
 
 
+# PREDICT FUTURE DEMAND
+@inventory_management.route('/inventory/predict_demand_monthly', methods=['GET'])
+@jwt_required()
+@role_required("Inventory_Manager")
+def predict_future_monthly_demand():
+    """
+    Predict future demand for the next 30 days based on the last 30 days of sales data.
+    Only negative changes (sales) are considered for the prediction.
+    """
+    try:
+        prediction_days = 30  # Future period for prediction
+
+        # Query sales data for the last 30 days for all products
+        products = (
+            db.session.query(
+                Product.product_id,
+                Product.name,
+                Subcategory.name.label("subcategory_name"),
+                Category.name.label("category_name"),
+                func.sum(
+                    case(
+                        (InventoryLog.change < 0, func.abs(InventoryLog.change)),
+                        else_=0
+                    )
+                ).label("total_sales"),  # Sum of negative changes
+                func.count(
+                    func.distinct(
+                        case(
+                            (InventoryLog.change < 0, func.date(InventoryLog.timestamp)),
+                            else_=None
+                        )
+                    )
+                ).label("sales_days")  # Count unique days with negative changes
+            )
+            .join(Subcategory, Product.subcategory_id == Subcategory.subcategory_id)
+            .join(Category, Subcategory.category_id == Category.category_id)
+            .outerjoin(InventoryLog, InventoryLog.product_id == Product.product_id)
+            .filter(func.date(InventoryLog.timestamp) >= text("CURRENT_DATE - INTERVAL 30 DAY"))  # Filter for the last 30 days
+            .group_by(Product.product_id)
+            .all()
+        )
+
+        predictions = []
+        for product in products:
+            # Calculate average daily sales and predict future demand
+            avg_daily_sales = product.total_sales / product.sales_days if product.sales_days else 0
+            predicted_demand = avg_daily_sales * prediction_days
+
+            predictions.append({
+                "product_id": product.product_id,
+                "name": product.name,
+                "average_daily_sales": round(avg_daily_sales, 2),
+                "predicted_demand_next_month": round(predicted_demand, 2),
+                "subcategory": product.subcategory_name,
+                "category": product.category_name
+            })
+
+        return jsonify({"predictions": predictions}), 200
+    except Exception as e:
+        # Return an error message if something goes wrong
+        return jsonify({"error": f"Can't Generate Predicted Future Demand Report: {str(e)}"}), 500

@@ -39,7 +39,7 @@ class InventoryLog(db.Model):
     product_id = db.Column(db.Integer, db.ForeignKey('Products.product_id'))
     change = db.Column(db.Integer, nullable=False) # positive for restock, negative for sale
     reason = db.Column(db.Text) # can make it take one of two options : sale or restock
-    timestamp = db.Column(db.DateTime, default=datetime.now(timezone.utc))
+    timestamp = db.Column(db.DateTime, default=datetime.now(timezone.utc),server_default=func.now(), nullable=False)
 
 class Order(db.Model):
     __tablename__ = 'Orders'

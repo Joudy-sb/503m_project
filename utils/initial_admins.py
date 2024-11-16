@@ -1,7 +1,13 @@
 from datetime import datetime, timezone
 from sqlalchemy.sql import text
 from database import db  # Import the database instance from models
+from argon2 import PasswordHasher
 
+ph = PasswordHasher(
+    time_cost=2,          # Number of iterations
+    memory_cost=19456,    # Memory in KiB (19 MiB)
+    parallelism=1         # Number of parallel threads) # Initialize the PasswordHasher
+)  # Initialize the PasswordHasher
 
 def create_admins():
     admins = [
@@ -31,11 +37,13 @@ def create_admins():
     """
     
     for admin in admins:
+        # Hash the password before storing it
+        hashed_pass = ph.hash(admin["password"])
         query = text(rawQueryString).bindparams(
             name=admin["name"],
             email=admin["email"],
             role=admin["role"],
-            password=admin["password"],
+            password=hashed_pass,
             created_at=datetime.now(timezone.utc),
             updated_at=datetime.now(timezone.utc)
         )
