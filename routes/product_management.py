@@ -38,18 +38,14 @@ def scan_file(file):
         cd = pyclamd.ClamdNetworkSocket(host='127.0.0.1', port=3310)
         if cd.ping():
             print("ClamAV Daemon is running.")
-            
-            # Check if the input is a file-like object or a file path
             if hasattr(file, 'read'):  # It's a file-like object
-                result = cd.scan_stream(file.read())
+                result = cd.scan_stream(file.read().encode() if isinstance(file.read(), str) else file.read())
             else:  # It's a file path
                 result = cd.scan_file(file)
-            
             if result:
                 for scanned_file, status in result.items():
                     if status[0] == "FOUND":
                         return jsonify({"error": f"Virus {status[1]} found in {scanned_file}"}), 400
-            
             print("No infection found.")
             return jsonify({"message": "File is clean."}), 200
         else:
@@ -73,7 +69,6 @@ def allowed_file(image_data):
         filename = os.path.basename(image_data)  
     print(filename)
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
 
 # THIS FUNCTION VALIDATES PRODUCT INFORMATION
 def validate_information(product):
@@ -172,7 +167,6 @@ def validate_information(product):
                 image_data.save(file_path)
             elif isinstance(image_data, str):  # It's a file path
                 file_path = os.path.normpath(image_data)
-            print("jusquici tout va bien2")
             print(file_path)
             if not allowed_file_type(file_path):
                 raise ValueError("Invalid file type for image")
@@ -307,7 +301,7 @@ def update_product(product_id):
         return jsonify({"message": "Product updated successfully!"}), 200
     except Exception as e:
         db.session.rollback()
-        return jsonify({"error": "Can't update product, try again"}), 500
+        return jsonify({"error": "can't update product, try again"}), 500
 
 # THIS FUNCTION ADDS BULK AMOUNT OF PRODUCTS
 @product_management.route('/product-management/add-csv', methods=['POST'])
@@ -325,6 +319,7 @@ def bulk_add():
         if not allowed_file_type(file_path):
             raise ValueError("Invalid file type for CSV")
         scan_file(file_path)
+        print("validated csv file, now reading products...")
         with open(file_path, mode='r', encoding='utf-8') as file:
             csv_reader = csv.DictReader(file)
             errors = []
@@ -341,7 +336,7 @@ def bulk_add():
                         "warehouse_location": row['warehouse_location'],
                         "category_id": row['category_id'],
                         "subcategory_id": row['subcategory_id'],
-                        "image_data": None 
+                        "image_data": row['image_data'] 
                     })                    
                     successful_entries.append(validated_product)
                 except ValueError as e:
@@ -411,7 +406,7 @@ def promotion(product_id):
         return jsonify({"message": "Product promotion added successfully!"}), 200
     except Exception as e:
         db.session.rollback()
-        return jsonify({"error": "can't place promotion, try again"}), 500
+        return jsonify({"error": "Verify input and try again"}), 500
     
 def is_url_allowed(url):
     try:

@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, render_template, request
 from flask_cors import CORS
 
 app = Flask(__name__)
@@ -206,6 +206,13 @@ PRODUCTS = [
 @app.route('/api/get-products', methods=['GET'])
 def get_products():
     return jsonify(PRODUCTS)
+
+@app.route('/api/admin-dashboard', methods=['GET'])
+def get_admins():
+    allowed_hosts = ['localhost']
+    if request.host.split(':')[0] not in allowed_hosts:
+        return jsonify({'error': 'Access denied'}), 403
+    return jsonify("admin's dashboard")
 
 if __name__ == '__main__':
     app.run(debug=True, port=8000)
