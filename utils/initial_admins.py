@@ -12,25 +12,25 @@ ph = PasswordHasher(
 def create_admins():
     admins = [
         {
-            "name": "Joudy Sabbagh",
+            "name": "Joudy",
             "email": "joudy@example.com",
             "role": "Product_Manager",
             "password": "password123"
         },
         {
-            "name": "Antoine Saade",
+            "name": "Antoine",
             "email": "antoine@example.com",
             "role": "Inventory_Manager",
             "password": "password456"
         },
         {
-            "name": "Lynn Shami",
+            "name": "Lynn",
             "email": "lynn@example.com",
             "role": "Order_Manager",
             "password": "password789"
         },
         {
-            "name": "Khaled Dassouki",
+            "name": "Khaled",
             "email": "khaled@example.com",
             "role": "Admin",
             "password": "password321"
