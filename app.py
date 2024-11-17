@@ -9,6 +9,7 @@ from database import Category, Subcategory
 from utils.initial_admins import create_admins
 from utils.initial_categories_data import create_categories, create_subcategories
 from flask_jwt_extended import JWTManager
+from extensions import limiter
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -16,6 +17,12 @@ app.config.from_object(Config)
 # Initialize extensions
 db.init_app(app)
 jwt = JWTManager(app)  # Initialize Flask-JWT-Extended with the app
+limiter.init_app(app)
+
+@app.errorhandler(429)
+def ratelimit_error(e):
+    return jsonify(error="Rate limit exceeded. Try again later."), 429
+
 
 # Directly register blueprints with the app
 app.register_blueprint(inventory_management, url_prefix='/admin')
@@ -33,7 +40,7 @@ def custom_unauthorized_response(err):
 
 if __name__ == '__main__':
     with app.app_context():
-        # db.drop_all()
+        db.drop_all()
         db.create_all()  
         print("Database and tables created!")
         if not Category.query.first():

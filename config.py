@@ -11,7 +11,7 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
   # JWT Configuration
-    JWT_SECRET_KEY = "super-secret"  # Use environment variables for security
+    JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "fallback-secret")  # Used environment variables for security
     JWT_TOKEN_LOCATION = ['cookies']  # Enable cookies for JWT
     JWT_COOKIE_SECURE = False  # Set to True in production (requires HTTPS)
     JWT_ACCESS_COOKIE_NAME = 'access_token'  # Name of the access token cookie
