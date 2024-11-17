@@ -7,7 +7,7 @@ class Config:
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16 MB limit
 
     # Database configuration
-    SQLALCHEMY_DATABASE_URI = 'mysql+pymysql://root:12345678910lc@localhost:3306/ecommerce_platform'
+    SQLALCHEMY_DATABASE_URI = 'mysql+pymysql://root:987654321@localhost:3306/ecommerce_platform'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
   # JWT Configuration

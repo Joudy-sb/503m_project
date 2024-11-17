@@ -15,6 +15,7 @@ from routes.login import role_required
 from utils.product_json_specifications import skincare_specifications_schema, makeup_schema, haircare_schema, fragrances_schema, bodycare_schema, nailcare_schema, mens_grooming_schema, tools_accessories_schema, natural_organic_schema, beauty_supplements_schema
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from flask import current_app
+from utils.log_helper import log_activity
 
 product_management = Blueprint('product_management', __name__)
 
@@ -37,18 +38,14 @@ def scan_file(file):
         cd = pyclamd.ClamdNetworkSocket(host='127.0.0.1', port=3310)
         if cd.ping():
             print("ClamAV Daemon is running.")
-            
-            # Check if the input is a file-like object or a file path
             if hasattr(file, 'read'):  # It's a file-like object
-                result = cd.scan_stream(file.read())
+                result = cd.scan_stream(file.read().encode() if isinstance(file.read(), str) else file.read())
             else:  # It's a file path
                 result = cd.scan_file(file)
-            
             if result:
                 for scanned_file, status in result.items():
                     if status[0] == "FOUND":
                         return jsonify({"error": f"Virus {status[1]} found in {scanned_file}"}), 400
-            
             print("No infection found.")
             return jsonify({"message": "File is clean."}), 200
         else:
@@ -72,7 +69,6 @@ def allowed_file(image_data):
         filename = os.path.basename(image_data)  
     print(filename)
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
 
 # THIS FUNCTION VALIDATES PRODUCT INFORMATION
 def validate_information(product):
@@ -171,7 +167,6 @@ def validate_information(product):
                 image_data.save(file_path)
             elif isinstance(image_data, str):  # It's a file path
                 file_path = os.path.normpath(image_data)
-            print("jusquici tout va bien2")
             print(file_path)
             if not allowed_file_type(file_path):
                 raise ValueError("Invalid file type for image")
@@ -220,10 +215,20 @@ def add_product():
         )
         db.session.execute(query)
         db.session.commit()
+
+        # Log the "Add Product" activity
+        log_activity(
+            admin_id=get_jwt_identity()["id"],  # Get admin ID from JWT token
+            action="Add Product",
+            description=f"Added product '{product['name']}'"
+        )
+
         return jsonify({"message": "Product added successfully!"}), 201
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
+    
+
 
 # THIS FUNCTION DELETES A PRODUCT FROM DATABASE
 @product_management.route('/product-management/delete/<int:product_id>', methods=['POST'])
@@ -238,6 +243,14 @@ def delete_product(product_id):
             return jsonify({"error": f"No product found"}), 404
         db.session.delete(product)
         db.session.commit()
+
+        # Log the "Delete Product" activity
+        log_activity(
+            admin_id=get_jwt_identity()["id"],  # Get admin ID from JWT token
+            action="Delete Product",
+            description=f"Deleted product '{product['name']}'"
+        )
+
         return jsonify({"message": f"Product deleted successfully"}), 200
     except Exception as e:
         db.session.rollback()
@@ -262,8 +275,9 @@ def update_product(product_id):
             "warehouse_location": data.get('warehouse_location') or product.warehouse_location,
             "category_id": data.get('category_id') or product.category_id,
             "subcategory_id": data.get('subcategory_id') or product.subcategory_id,
-            "image_data": request.files.get('image_data')
+            "image_data": request.files.get('image_data') or product.image_data
         }
+        
         validated_data = validate_information(updated_product)
         raw_query = """
         UPDATE Products
@@ -278,10 +292,16 @@ def update_product(product_id):
         )
         db.session.execute(query)
         db.session.commit()
+
+        log_activity(
+            admin_id=get_jwt_identity()["id"],  # Get admin ID from JWT token
+            action="Update Product",
+            description=f"Updated product ID {product_id}"
+        )
         return jsonify({"message": "Product updated successfully!"}), 200
     except Exception as e:
         db.session.rollback()
-        return jsonify({"error": "Can't update product, try again"}), 500
+        return jsonify({"error": "can't update product, try again"}), 500
 
 # THIS FUNCTION ADDS BULK AMOUNT OF PRODUCTS
 @product_management.route('/product-management/add-csv', methods=['POST'])
@@ -299,6 +319,7 @@ def bulk_add():
         if not allowed_file_type(file_path):
             raise ValueError("Invalid file type for CSV")
         scan_file(file_path)
+        print("validated csv file, now reading products...")
         with open(file_path, mode='r', encoding='utf-8') as file:
             csv_reader = csv.DictReader(file)
             errors = []
@@ -315,7 +336,7 @@ def bulk_add():
                         "warehouse_location": row['warehouse_location'],
                         "category_id": row['category_id'],
                         "subcategory_id": row['subcategory_id'],
-                        "image_data": None 
+                        "image_data": row['image_data'] 
                     })                    
                     successful_entries.append(validated_product)
                 except ValueError as e:
@@ -335,6 +356,12 @@ def bulk_add():
             "message": f"Successfully added {len(successful_entries)} products.",
             "errors": errors  
         }
+        # Log the activity
+        log_activity(
+            admin_id=get_jwt_identity()["id"],  # Get admin ID from JWT token
+            action="Bulk Add Products",
+            description=f"Added {len(successful_entries)} products from CSV file"
+        )
         return jsonify(response), 201
     except Exception as e:
         db.session.rollback()
@@ -369,10 +396,17 @@ def promotion(product_id):
         )
         db.session.execute(query)
         db.session.commit()
+
+        # Log the activity
+        log_activity(
+            admin_id=get_jwt_identity()["id"],  # Get admin ID from JWT token
+            action="Add Promotion",
+            description=f"Added promotion to product ID {product_id}"
+        )
         return jsonify({"message": "Product promotion added successfully!"}), 200
     except Exception as e:
         db.session.rollback()
-        return jsonify({"error": "can't place promotion, try again"}), 500
+        return jsonify({"error": "Verify input and try again"}), 500
     
 def is_url_allowed(url):
     try:
@@ -416,6 +450,14 @@ def api_add():
             )
             db.session.execute(query)
         db.session.commit()
+
+        # Log the activity
+        log_activity(
+            admin_id=get_jwt_identity()["id"],  # Get admin ID from JWT token
+            action="Add Products from API",
+            description=f"Added {len(products)} products from API"
+        )
+
         return jsonify({"message": f"{len(products)} products added successfully!"}), 201
     except requests.exceptions.RequestException as e:
         return "Error fetching product details: " + str(e), 500

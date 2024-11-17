@@ -16,3 +16,4 @@ reportlab
 flask-jwt-extended==4.6.0
 argon2-cffi
 flask-limiter
+flask_mail

@@ -103,7 +103,8 @@ class ActivityLog(db.Model):
     log_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     admin_id = db.Column(db.Integer, db.ForeignKey('Admins.admin_id'))
     action = db.Column(db.Text, nullable=False)
-    timestamp = db.Column(db.DateTime, default=datetime.now(timezone.utc))
+    description = db.Column(db.Text)
+    timestamp = db.Column(db.DateTime, default=datetime.now(timezone.utc),server_default=func.now(), nullable=False)
 
 class Return(db.Model):
     __tablename__ = 'Returns'

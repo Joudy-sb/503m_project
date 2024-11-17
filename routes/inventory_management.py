@@ -1,10 +1,11 @@
 from flask import Blueprint, jsonify
-from flask_jwt_extended import jwt_required
+from flask_jwt_extended import jwt_required, get_jwt_identity
 from sqlalchemy import func
 from database import db, Product, Subcategory, Category, InventoryLog
 from routes.login import role_required
 from sqlalchemy.sql import case
 from sqlalchemy import func, Date, text
+from utils.log_helper import log_activity
 
 
 inventory_management = Blueprint('inventory_management', __name__)
@@ -67,7 +68,12 @@ def view_all_warehouses_inventory():
 
             # Add the warehouse inventory to the final list
             inventory.append(warehouse_inventory)
-
+        # Log the activity
+        log_activity(
+            admin_id=get_jwt_identity()["id"],  # Get admin ID from JWT token
+            action="Viewed all warehouses inventory",
+            description=f"Viewed all warehouses inventory"
+        )
         return jsonify({"inventory": inventory, "low_stock_alerts": low_stock_alerts}), 200
     except Exception:
         # Return an error message if something goes wrong
@@ -130,7 +136,12 @@ def generate_inventory_report():
 
             # Add the warehouse report to the final list
             report_data.append(warehouse_report)
-
+        # Log the activity
+        log_activity(
+            admin_id=get_jwt_identity()["id"],  # Get admin ID from JWT token
+            action="Generated Inventory Turnover Report",
+            description=f"Generated Inventory Turnover Report"
+        )
         return jsonify({"report": report_data}), 200
     except Exception as e:
         # Return an error message if something goes wrong
@@ -176,7 +187,12 @@ def get_most_popular_products():
                 "subcategory": product.subcategory_name,
                 "category": product.category_name
             })
-
+        # Log the activity
+        log_activity(
+            admin_id=get_jwt_identity()["id"],  # Get admin ID from JWT token
+            action="Generated Popular Products Report",
+            description=f"Generated Popular Products Report"
+        )
         return jsonify({"popular_products": results}), 200
     except Exception as e:
         # Return an error message if something goes wrong
@@ -239,8 +255,13 @@ def predict_future_monthly_demand():
                 "subcategory": product.subcategory_name,
                 "category": product.category_name
             })
-
+        # Log the activity
+        log_activity(
+            admin_id=get_jwt_identity()["id"],  # Get admin ID from JWT token
+            action="Generated Predicted Future Demand Report",
+            description=f"Generated Predicted Future Demand Report"
+        )
         return jsonify({"predictions": predictions}), 200
     except Exception as e:
         # Return an error message if something goes wrong
-        return jsonify({"error": f"Can't Generate Predicted Future Demand Report: {str(e)}"}), 500
+        return jsonify({"error": f"Can't Generate Predicted Future Demand Report"}), 500

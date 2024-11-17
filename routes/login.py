@@ -30,7 +30,6 @@ LOCK_DURATION = timedelta(minutes=15)
 def login_auth():
     name = request.json.get("name", None)
     password = request.json.get("password", None)
-
     user = Admin.query.filter_by(name=name).first()
     if not user:
         return jsonify({"msg": "Bad username or password"}), 401
@@ -70,7 +69,6 @@ def login_auth():
     db.session.commit()  # Commit changes
 
     access_token = create_access_token(identity={"id": user.admin_id, "role": user.role})
-
     # Store the token in an HTTP-only, secure cookie
     response = jsonify({"msg": "Login successful", "csrf_token": get_csrf_token(access_token)})
     set_access_cookies(response, access_token)

@@ -8,9 +8,9 @@ from reportlab.pdfgen import canvas
 from reportlab.platypus import Table, TableStyle
 from flask import jsonify, request
 from database import Order, OrderItem, Customer, Product, Return, db
-from flask_jwt_extended import jwt_required, get_jwt_identity, get_csrf_token
+from flask_jwt_extended import jwt_required, get_jwt_identity
 from werkzeug.utils import secure_filename
-
+from utils.log_helper  import log_activity
 
 from routes.login import role_required
 
@@ -19,7 +19,7 @@ order_management = Blueprint('order_management', __name__)
 
 @order_management.route('/orders', methods=['GET']) #manage orders -> gets all orders from the db 
 @jwt_required()
-@role_required(["Order_Manager"]) 
+@role_required(["Order_Manager", "Admin"])  #X-CSRF-TOKEN
 def manage_orders():
     status = request.args.get('status')  # Get the status filter from the query params
     
@@ -42,7 +42,13 @@ def manage_orders():
         }
         
         orders_data.append(order_data)
-
+    # Log the activity
+    log_activity(
+            admin_id=get_jwt_identity()["id"],  # Get admin ID from JWT token
+            action="Viewed orders",  # Log the action
+            description="Viewed all orders"  # Log the description
+        )
+    
     # Return the orders data as a JSON response
     return jsonify(orders_data)
 
@@ -80,6 +86,12 @@ def get_order_status(order_id):
         return jsonify({"error": "Order not found"}), 404
     
     # Return the order status in JSON format
+    # Log the activity
+    log_activity(
+            admin_id=get_jwt_identity()["id"],  # Get admin ID from JWT token
+            action="Viewed order status",  # Log the action
+            description=f"Viewed status for order ID: {order_id}"  # Log the description
+        )
     return jsonify({
         "order_id": order.order_id,
         "status": order.status
@@ -163,6 +175,12 @@ def generate_invoice(order_id):
     filename = f"Invoice_Order_{order_id}.pdf"
     secure_filename(filename)
 
+    # Log the activity
+    log_activity(
+            admin_id=get_jwt_identity()["id"],  # Get admin ID from JWT token
+            action="Generated invoice",  # Log the action
+            description=f"Generated invoice for order ID: {order_id}"  # Log the description
+        )
     # Send the PDF as a file to download
     return send_file(pdf_buffer, as_attachment=True, download_name=filename, mimetype='application/pdf')
 
@@ -170,9 +188,11 @@ def generate_invoice(order_id):
 ALLOWED_ORDER_STATUSES = {"Pending", "Processing", "Shipped", "Delivered"}
 
 
-@order_management.route('/update-order-status/<int:order_id>', methods=['PUT'])     # admin can update the status of the order   
+
+@order_management.route('/update-order-status/<int:order_id>', methods=['PUT'])     # admin can update the status of the order 
+                                                                                    # validated admin input
 @jwt_required()
-@role_required(["Order_Manager"])                             
+@role_required(["Order_Manager", "Admin"])
 def update_order_status(order_id):
     data = request.get_json()
 
@@ -199,7 +219,15 @@ def update_order_status(order_id):
     except Exception as e:
         # Rollback any changes made during this transaction
         db.session.rollback()
-
+    
+        # Return a generic error message to the client
+        return jsonify({"error": "Failed to update order status"}), 500
+    # Log the activity
+    log_activity(
+            admin_id=get_jwt_identity()["id"],  # Get admin ID from JWT token
+            action="Updated order status",  # Log the action
+            description=f"Updated status for order ID: {order_id} to {new_status}"  # Log the description
+        )
 
     return jsonify({
         "message": "Order status updated successfully",
@@ -216,7 +244,13 @@ def view_returns():
         returns = Return.query.filter_by(status=status).all()
     else:
         returns = Return.query.all()
-        
+
+    #log the activity
+    log_activity(
+            admin_id=get_jwt_identity()["id"],  # Get admin ID from JWT token
+            action="Viewed return requests",  # Log the action
+            description="Viewed all return requests"  # Log the description
+        )  
     return jsonify([{
         "return_id": r.return_id,
         "order_id": r.order_id,
@@ -232,7 +266,6 @@ def view_returns():
 @jwt_required()
 @role_required(["Order_Manager"])
 def process_return(return_id):
-
     # Get the return request from the database
     return_request = Return.query.get_or_404(return_id)
 
@@ -254,7 +287,12 @@ def process_return(return_id):
 
     # Commit the changes to the database
     db.session.commit()
-
+    # Log the activity
+    log_activity(
+            admin_id=get_jwt_identity()["id"],  # Get admin ID from JWT token
+            action="Processed return request",  # Log the action
+            description=f"Processed return request ID: {return_id}"  # Log the description
+        )
     return jsonify({
         'message': 'Return request processed successfully.',
         'return_id': return_request.return_id,
