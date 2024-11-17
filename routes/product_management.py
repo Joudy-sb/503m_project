@@ -284,14 +284,6 @@ def update_product(product_id):
             "image_data": request.files.get('image_data') or product.image_data
         }
         
-        # Capture changes for logging
-        changes = []
-        for field, new_value in product.items():
-            if hasattr(product, field):  # Check if the product has the field
-                old_value = getattr(product, field)
-                if new_value != old_value:
-                    changes.append(f"{field}: '{old_value}' -> '{new_value}'")
-
         validated_data = validate_information(updated_product)
         raw_query = """
         UPDATE Products
@@ -307,15 +299,10 @@ def update_product(product_id):
         db.session.execute(query)
         db.session.commit()
 
-         # Log the activity
-        if changes:
-            description=f"Updated product ID {product_id}: " + "; ".join(changes)
-        else:
-            description=f"Updated product ID {product_id}, but no changes were made"
         log_activity(
             admin_id=get_jwt_identity()["id"],  # Get admin ID from JWT token
             action="Update Product",
-            description=description
+            description=f"Updated product ID {product_id}"
         )
         return jsonify({"message": "Product updated successfully!"}), 200
     except Exception as e:
