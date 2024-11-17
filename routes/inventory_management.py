@@ -264,4 +264,4 @@ def predict_future_monthly_demand():
         return jsonify({"predictions": predictions}), 200
     except Exception as e:
         # Return an error message if something goes wrong
-        return jsonify({"error": f"Can't Generate Predicted Future Demand Report: {str(e)}"}), 500
+        return jsonify({"error": f"Can't Generate Predicted Future Demand Report"}), 500

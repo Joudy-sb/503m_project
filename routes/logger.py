@@ -1,11 +1,13 @@
 from flask import Blueprint, jsonify
 from flask_jwt_extended import jwt_required
 from database import ActivityLog
+from routes.login import role_required
 
 logger = Blueprint('logger', __name__)
 
 @logger.route("/view_logs", methods=["GET"])
 @jwt_required()
+@role_required("Admin")
 def view_logs():
     """
     Fetch and display all activity logs.
