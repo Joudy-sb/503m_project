@@ -241,15 +241,17 @@ def delete_product(product_id):
         product = Product.query.filter_by(product_id=product_id).first()
         if product is None:
             return jsonify({"error": f"No product found"}), 404
-        db.session.delete(product)
-        db.session.commit()
-
+        
+        
         # Log the "Delete Product" activity
         log_activity(
             admin_id=get_jwt_identity()["id"],  # Get admin ID from JWT token
             action="Delete Product",
-            description=f"Deleted product '{product['name']}'"
+            description=f"Deleted product '{product_id}'"
         )
+
+        db.session.delete(product)
+        db.session.commit()
 
         return jsonify({"message": f"Product deleted successfully"}), 200
     except Exception as e:
